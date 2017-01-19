@@ -1,5 +1,5 @@
 /**
- * @version 1.0.0
+ * @version 2.1.0
  * @link https://github.com/gajus/angular-swing for the canonical source repository
  * @license https://github.com/gajus/angular-swing/blob/master/LICENSE BSD 3-Clause
  */
@@ -69,15 +69,737 @@ process.chdir = function (dir) {
 };
 
 },{}],2:[function(require,module,exports){
-/*! Hammer.JS - v2.0.4 - 2014-09-28
+(function (global){
+'use strict';
+
+Object.defineProperty(exports, '__esModule', {
+    value: true
+});
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
+
+var _sister = require('sister');
+
+var _sister2 = _interopRequireDefault(_sister);
+
+var _hammerjs = require('hammerjs');
+
+var _hammerjs2 = _interopRequireDefault(_hammerjs);
+
+var _rebound = require('rebound');
+
+var _rebound2 = _interopRequireDefault(_rebound);
+
+var _vendorPrefix = require('vendor-prefix');
+
+var _vendorPrefix2 = _interopRequireDefault(_vendorPrefix);
+
+var _utilJs = require('./util.js');
+
+var _utilJs2 = _interopRequireDefault(_utilJs);
+
+var _raf = require('raf');
+
+var _raf2 = _interopRequireDefault(_raf);
+
+var Card = undefined;
+
+/**
+ * @param {Stack} stack
+ * @param {HTMLElement} targetElement
+ * @return {Object} An instance of Card.
+ */
+Card = function (stack, targetElement) {
+    var card = undefined,
+        config = undefined,
+        construct = undefined,
+        currentX = undefined,
+        currentY = undefined,
+        doMove = undefined,
+        eventEmitter = undefined,
+        isDraging = undefined,
+        lastThrow = undefined,
+        lastTranslate = undefined,
+        lastX = undefined,
+        lastY = undefined,
+        mc = undefined,
+        _onSpringUpdate = undefined,
+        springSystem = undefined,
+        springThrowIn = undefined,
+        springThrowOut = undefined,
+        throwOutDistance = undefined,
+        throwWhere = undefined;
+
+    construct = function () {
+        card = {};
+        config = Card.makeConfig(stack.getConfig());
+        eventEmitter = (0, _sister2['default'])();
+        springSystem = stack.getSpringSystem();
+        springThrowIn = springSystem.createSpring(250, 10);
+        springThrowOut = springSystem.createSpring(500, 20);
+        lastThrow = {};
+        lastTranslate = {
+            x: 0,
+            y: 0
+        };
+
+        springThrowIn.setRestSpeedThreshold(0.05);
+        springThrowIn.setRestDisplacementThreshold(0.05);
+
+        springThrowOut.setRestSpeedThreshold(0.05);
+        springThrowOut.setRestDisplacementThreshold(0.05);
+
+        throwOutDistance = config.throwOutDistance(config.minThrowOutDistance, config.maxThrowOutDistance);
+
+        mc = new _hammerjs2['default'].Manager(targetElement, {
+            recognizers: [[_hammerjs2['default'].Pan, {
+                threshold: 2
+            }]]
+        });
+
+        Card.appendToParent(targetElement);
+
+        eventEmitter.on('panstart', function () {
+            Card.appendToParent(targetElement);
+
+            eventEmitter.trigger('dragstart', {
+                target: targetElement
+            });
+
+            currentX = 0;
+            currentY = 0;
+
+            isDraging = true;
+
+            (function animation() {
+                if (isDraging) {
+                    doMove();
+
+                    (0, _raf2['default'])(animation);
+                }
+            })();
+        });
+
+        eventEmitter.on('panmove', function (e) {
+            currentX = e.deltaX;
+            currentY = e.deltaY;
+        });
+
+        eventEmitter.on('panend', function (e) {
+            var x = undefined,
+                y = undefined;
+
+            isDraging = false;
+
+            x = lastTranslate.x + e.deltaX;
+            y = lastTranslate.y + e.deltaY;
+
+            if (config.isThrowOut(x, targetElement, config.throwOutConfidence(x, targetElement))) {
+                card.throwOut(x, y);
+            } else {
+                card.throwIn(x, y);
+            }
+
+            eventEmitter.trigger('dragend', {
+                target: targetElement
+            });
+        });
+
+        // "mousedown" event fires late on touch enabled devices, thus listening
+        // to the touchstart event for touch enabled devices and mousedown otherwise.
+        if (_utilJs2['default'].isTouchDevice()) {
+            targetElement.addEventListener('touchstart', function () {
+                eventEmitter.trigger('panstart');
+            });
+
+            // Disable scrolling while dragging the element on the touch enabled devices.
+            // @see http://stackoverflow.com/a/12090055/368691
+            (function () {
+                var dragging = undefined;
+
+                targetElement.addEventListener('touchstart', function () {
+                    dragging = true;
+                });
+
+                targetElement.addEventListener('touchend', function () {
+                    dragging = false;
+                });
+
+                global.addEventListener('touchmove', function (e) {
+                    if (dragging) {
+                        e.preventDefault();
+                    }
+                });
+            })();
+        } else {
+            targetElement.addEventListener('mousedown', function () {
+                eventEmitter.trigger('panstart');
+            });
+        }
+
+        mc.on('panmove', function (e) {
+            eventEmitter.trigger('panmove', e);
+        });
+
+        mc.on('panend', function (e) {
+            eventEmitter.trigger('panend', e);
+        });
+
+        springThrowIn.addListener({
+            onSpringUpdate: function onSpringUpdate(spring) {
+                var value = undefined,
+                    x = undefined,
+                    y = undefined;
+
+                value = spring.getCurrentValue();
+                x = _rebound2['default'].MathUtil.mapValueInRange(value, 0, 1, lastThrow.fromX, 0);
+                y = _rebound2['default'].MathUtil.mapValueInRange(value, 0, 1, lastThrow.fromY, 0);
+
+                _onSpringUpdate(x, y);
+            },
+            onSpringAtRest: function onSpringAtRest() {
+                eventEmitter.trigger('throwinend', {
+                    target: targetElement
+                });
+            }
+        });
+
+        springThrowOut.addListener({
+            onSpringUpdate: function onSpringUpdate(spring) {
+                var value = undefined,
+                    x = undefined,
+                    y = undefined;
+
+                value = spring.getCurrentValue();
+                x = _rebound2['default'].MathUtil.mapValueInRange(value, 0, 1, lastThrow.fromX, throwOutDistance * lastThrow.direction);
+                y = lastThrow.fromY;
+
+                _onSpringUpdate(x, y);
+            },
+            onSpringAtRest: function onSpringAtRest() {
+                eventEmitter.trigger('throwoutend', {
+                    target: targetElement
+                });
+            }
+        });
+
+        /**
+         * Transforms card position based on the current environment variables.
+         *
+         * @return {undefined}
+         */
+        doMove = function () {
+            var r = undefined,
+                x = undefined,
+                y = undefined;
+
+            if (currentX === lastX && currentY === lastY) {
+                return;
+            }
+
+            lastX = currentX;
+            lastY = currentY;
+
+            x = lastTranslate.x + currentX;
+            y = lastTranslate.y + currentY;
+            r = config.rotation(x, y, targetElement, config.maxRotation);
+
+            config.transform(targetElement, x, y, r);
+
+            eventEmitter.trigger('dragmove', {
+                target: targetElement,
+                throwOutConfidence: config.throwOutConfidence(x, targetElement),
+                throwDirection: x < 0 ? Card.DIRECTION_LEFT : Card.DIRECTION_RIGHT
+            });
+        };
+
+        /**
+         * Invoked every time the physics solver updates the Spring's value.
+         *
+         * @param {Number} x
+         * @param {Number} y
+         * @return {undefined}
+         */
+        _onSpringUpdate = function (x, y) {
+            var r = undefined;
+
+            r = config.rotation(x, y, targetElement, config.maxRotation);
+
+            lastTranslate.x = x || 0;
+            lastTranslate.y = y || 0;
+
+            Card.transform(targetElement, x, y, r);
+        };
+
+        /**
+         * @param {Card.THROW_IN|Card.THROW_OUT} where
+         * @param {Number} fromX
+         * @param {Number} fromY
+         * @return {undefined}
+         */
+        throwWhere = function (where, fromX, fromY) {
+            lastThrow.fromX = fromX;
+            lastThrow.fromY = fromY;
+            lastThrow.direction = lastThrow.fromX < 0 ? Card.DIRECTION_LEFT : Card.DIRECTION_RIGHT;
+
+            if (where === Card.THROW_IN) {
+                springThrowIn.setCurrentValue(0).setAtRest().setEndValue(1);
+
+                eventEmitter.trigger('throwin', {
+                    target: targetElement,
+                    throwDirection: lastThrow.direction
+                });
+            } else if (where === Card.THROW_OUT) {
+                springThrowOut.setCurrentValue(0).setAtRest().setVelocity(100).setEndValue(1);
+
+                eventEmitter.trigger('throwout', {
+                    target: targetElement,
+                    throwDirection: lastThrow.direction
+                });
+
+                if (lastThrow.direction === Card.DIRECTION_LEFT) {
+                    eventEmitter.trigger('throwoutleft', {
+                        target: targetElement,
+                        throwDirection: lastThrow.direction
+                    });
+                } else {
+                    eventEmitter.trigger('throwoutright', {
+                        target: targetElement,
+                        throwDirection: lastThrow.direction
+                    });
+                }
+            } else {
+                throw new Error('Invalid throw event.');
+            }
+        };
+    };
+
+    construct();
+
+    /**
+     * Alias
+     */
+    card.on = eventEmitter.on;
+    card.trigger = eventEmitter.trigger;
+
+    /**
+     * Throws a card into the stack from an arbitrary position.
+     *
+     * @param {Number} fromX
+     * @param {Number} fromY
+     * @return {undefined}
+     */
+    card.throwIn = function (fromX, fromY) {
+        throwWhere(Card.THROW_IN, fromX, fromY);
+    };
+
+    /**
+     * Throws a card out of the stack in the direction away from the original offset.
+     *
+     * @param {Number} fromX
+     * @param {Number} fromY
+     * @return {undefined}
+     */
+    card.throwOut = function (fromX, fromY) {
+        throwWhere(Card.THROW_OUT, fromX, fromY);
+    };
+
+    /**
+     * Unbinds all Hammer.Manager events.
+     * Removes the listeners from the physics simulation.
+     *
+     * @return {undefined}
+     */
+    card.destroy = function () {
+        mc.destroy();
+        springThrowIn.destroy();
+        springThrowOut.destroy();
+
+        stack.destroyCard(card);
+    };
+
+    return card;
+};
+
+/**
+ * Creates a configuration object.
+ *
+ * @param {Object} config
+ * @return {Object}
+ */
+Card.makeConfig = function () {
+    var config = arguments.length <= 0 || arguments[0] === undefined ? {} : arguments[0];
+
+    var defaultConfig = undefined;
+
+    defaultConfig = {
+        isThrowOut: Card.isThrowOut,
+        throwOutConfidence: Card.throwOutConfidence,
+        throwOutDistance: Card.throwOutDistance,
+        minThrowOutDistance: 400,
+        maxThrowOutDistance: 500,
+        rotation: Card.rotation,
+        maxRotation: 20,
+        transform: Card.transform
+    };
+
+    return _utilJs2['default'].assign({}, defaultConfig, config);
+};
+
+/**
+ * Uses CSS transform to translate element position and rotation.
+ *
+ * Invoked in the event of `dragmove` and every time the physics solver is triggered.
+ *
+ * @param {HTMLElement} element
+ * @param {Number} x Horizontal offset from the startDrag.
+ * @param {Number} y Vertical offset from the startDrag.
+ * @param {Number} r
+ * @return {undefined}
+ */
+Card.transform = function (element, x, y, r) {
+    element.style[(0, _vendorPrefix2['default'])('transform')] = 'translate3d(0, 0, 0) translate(' + x + 'px, ' + y + 'px) rotate(' + r + 'deg)';
+};
+
+/**
+ * Append element to the parentNode.
+ *
+ * This makes the element first among the siblings. The reason for using
+ * this as opposed to zIndex is to allow CSS selector :nth-child.
+ *
+ * Invoked in the event of mousedown.
+ * Invoked when card is added to the stack.
+ *
+ * @param {HTMLElement} element The target element.
+ * @return {undefined}
+ */
+Card.appendToParent = function (element) {
+    var parentNode = undefined,
+        siblings = undefined,
+        targetIndex = undefined;
+
+    parentNode = element.parentNode;
+    siblings = _utilJs2['default'].elementChildren(parentNode);
+    targetIndex = siblings.indexOf(element);
+
+    if (targetIndex + 1 !== siblings.length) {
+        parentNode.removeChild(element);
+        parentNode.appendChild(element);
+    }
+};
+
+/**
+ * Returns a value between 0 and 1 indicating the completeness of the throw out condition.
+ *
+ * Ration of the absolute distance from the original card position and element width.
+ *
+ * @param {Number} offset Distance from the dragStart.
+ * @param {HTMLElement} element Element.
+ * @return {Number}
+ */
+Card.throwOutConfidence = function (offset, element) {
+    return Math.min(Math.abs(offset) / element.offsetWidth, 1);
+};
+
+/**
+ * Determines if element is being thrown out of the stack.
+ *
+ * Element is considered to be thrown out when throwOutConfidence is equal to 1.
+ *
+ * @param {Number} offset Distance from the dragStart.
+ * @param {HTMLElement} element Element.
+ * @param {Number} throwOutConfidence config.throwOutConfidence
+ * @return {Boolean}
+ */
+Card.isThrowOut = function (offset, element, throwOutConfidence) {
+    return throwOutConfidence === 1;
+};
+
+/**
+ * Calculates a distances at which the card is thrown out of the stack.
+ *
+ * @param {Number} min
+ * @param {Number} max
+ * @return {Number}
+ */
+Card.throwOutDistance = function (min, max) {
+    return _utilJs2['default'].random(min, max);
+};
+
+/**
+ * Calculates rotation based on the element x and y offset, element width and maxRotation variables.
+ *
+ * @param {Number} x Horizontal offset from the startDrag.
+ * @param {Number} y Vertical offset from the startDrag.
+ * @param {HTMLElement} element Element.
+ * @param {Number} maxRotation
+ * @return {Number} Rotation angle expressed in degrees.
+ */
+Card.rotation = function (x, y, element, maxRotation) {
+    var horizontalOffset = undefined,
+        rotation = undefined,
+        verticalOffset = undefined;
+
+    horizontalOffset = Math.min(Math.max(x / element.offsetWidth, -1), 1);
+    verticalOffset = (y > 0 ? 1 : -1) * Math.min(Math.abs(y) / 100, 1);
+    rotation = horizontalOffset * verticalOffset * maxRotation;
+
+    return rotation;
+};
+
+Card.DIRECTION_LEFT = -1;
+Card.DIRECTION_RIGHT = 1;
+
+Card.THROW_IN = 'in';
+Card.THROW_OUT = 'out';
+
+exports['default'] = Card;
+module.exports = exports['default'];
+//# sourceMappingURL=card.js.map
+}).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./util.js":5,"hammerjs":6,"raf":71,"rebound":73,"sister":74,"vendor-prefix":75}],3:[function(require,module,exports){
+(function (global){
+'use strict';
+
+Object.defineProperty(exports, '__esModule', {
+    value: true
+});
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
+
+var _stack = require('./stack');
+
+var _stack2 = _interopRequireDefault(_stack);
+
+var _card = require('./card');
+
+var _card2 = _interopRequireDefault(_card);
+
+global.gajus = global.gajus || {};
+
+global.gajus.Swing = {
+    Stack: _stack2['default'],
+    Card: _card2['default']
+};
+
+exports.Stack = _stack2['default'];
+exports.Card = _card2['default'];
+//# sourceMappingURL=index.js.map
+}).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./card":2,"./stack":4}],4:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, '__esModule', {
+    value: true
+});
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
+
+var _sister = require('sister');
+
+var _sister2 = _interopRequireDefault(_sister);
+
+var _rebound = require('rebound');
+
+var _rebound2 = _interopRequireDefault(_rebound);
+
+var _card = require('./card');
+
+var _card2 = _interopRequireDefault(_card);
+
+var _util = require('./util');
+
+var _util2 = _interopRequireDefault(_util);
+
+var Stack = undefined;
+
+/**
+ * @param {Object} config Stack configuration.
+ * @return {Object} An instance of Stack object.
+ */
+Stack = function (config) {
+    var construct = undefined,
+        eventEmitter = undefined,
+        index = undefined,
+        springSystem = undefined,
+        stack = undefined;
+
+    construct = function () {
+        stack = {};
+        springSystem = new _rebound2['default'].SpringSystem();
+        eventEmitter = (0, _sister2['default'])();
+        index = [];
+    };
+
+    construct();
+
+    /**
+     * Get the configuration object.
+     *
+     * @return {Object}
+     */
+    stack.getConfig = function () {
+        return config;
+    };
+
+    /**
+     * Get a singleton instance of the SpringSystem physics engine.
+     *
+     * @return {Sister}
+     */
+    stack.getSpringSystem = function () {
+        return springSystem;
+    };
+
+    /**
+     * Proxy to the instance of the event emitter.
+     *
+     * @param {String} eventName
+     * @param {String} listener
+     * @return {undefined}
+     */
+    stack.on = function (eventName, listener) {
+        eventEmitter.on(eventName, listener);
+    };
+
+    /**
+     * Creates an instance of Card and associates it with an element.
+     *
+     * @param {HTMLElement} element
+     * @return {Card}
+     */
+    stack.createCard = function (element) {
+        var card = undefined,
+            events = undefined;
+
+        card = (0, _card2['default'])(stack, element);
+
+        events = ['throwout', 'throwoutend', 'throwoutleft', 'throwoutright', 'throwin', 'throwinend', 'dragstart', 'dragmove', 'dragend'];
+
+        // Proxy Card events to the Stack.
+        events.forEach(function (eventName) {
+            card.on(eventName, function (data) {
+                eventEmitter.trigger(eventName, data);
+            });
+        });
+
+        index.push({
+            element: element,
+            card: card
+        });
+
+        return card;
+    };
+
+    /**
+     * Returns an instance of Card associated with an element.
+     *
+     * @param {HTMLElement} element
+     * @return {Card|null}
+     */
+    stack.getCard = function (element) {
+        var card = undefined;
+
+        card = _util2['default'].find(index, {
+            element: element
+        });
+
+        if (card) {
+            return card.card;
+        }
+
+        return null;
+    };
+
+    /**
+     * Remove an instance of Card from the stack index.
+     *
+     * @param {Card} card
+     * @return {Card}
+     */
+    stack.destroyCard = function (card) {
+        return _util2['default'].remove(index, card);
+    };
+
+    return stack;
+};
+
+exports['default'] = Stack;
+module.exports = exports['default'];
+//# sourceMappingURL=stack.js.map
+},{"./card":2,"./util":5,"rebound":73,"sister":74}],5:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, '__esModule', {
+    value: true
+});
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
+
+var _lodashArrayRemove = require('lodash/array/remove');
+
+var _lodashArrayRemove2 = _interopRequireDefault(_lodashArrayRemove);
+
+var _lodashObjectAssign = require('lodash/object/assign');
+
+var _lodashObjectAssign2 = _interopRequireDefault(_lodashObjectAssign);
+
+var _lodashNumberRandom = require('lodash/number/random');
+
+var _lodashNumberRandom2 = _interopRequireDefault(_lodashNumberRandom);
+
+var _lodashCollectionFind = require('lodash/collection/find');
+
+var _lodashCollectionFind2 = _interopRequireDefault(_lodashCollectionFind);
+
+var _lodashCollectionWhere = require('lodash/collection/where');
+
+var _lodashCollectionWhere2 = _interopRequireDefault(_lodashCollectionWhere);
+
+var util = undefined;
+
+util = {};
+
+util.remove = _lodashArrayRemove2['default'];
+util.assign = _lodashObjectAssign2['default'];
+util.random = _lodashNumberRandom2['default'];
+util.find = _lodashCollectionFind2['default'];
+util.where = _lodashCollectionWhere2['default'];
+
+/**
+ * Return direct children elements.
+ *
+ * @see http://stackoverflow.com/a/27102446/368691
+ * @param {HTMLElement} element
+ * @return {Array}
+ */
+util.elementChildren = function (element) {
+    return util.where(element.childNodes, {
+        nodeType: 1
+    });
+};
+
+/**
+ * @see http://stackoverflow.com/questions/4817029/whats-the-best-way-to-detect-a-touch-screen-device-using-javascript/4819886#4819886
+ * @return {Boolean}
+ */
+util.isTouchDevice = function () {
+    return 'ontouchstart' in window || navigator.msMaxTouchPoints;
+};
+
+exports['default'] = util;
+module.exports = exports['default'];
+//# sourceMappingURL=util.js.map
+},{"lodash/array/remove":8,"lodash/collection/find":10,"lodash/collection/where":11,"lodash/number/random":64,"lodash/object/assign":65}],6:[function(require,module,exports){
+/*! Hammer.JS - v2.0.6 - 2015-12-23
  * http://hammerjs.github.io/
  *
- * Copyright (c) 2014 Jorik Tangelder;
- * Licensed under the MIT license */
+ * Copyright (c) 2015 Jorik Tangelder;
+ * Licensed under the  license */
 (function(window, document, exportName, undefined) {
   'use strict';
 
-var VENDOR_PREFIXES = ['', 'webkit', 'moz', 'MS', 'ms', 'o'];
+var VENDOR_PREFIXES = ['', 'webkit', 'Moz', 'MS', 'ms', 'o'];
 var TEST_ELEMENT = document.createElement('div');
 
 var TYPE_FUNCTION = 'function';
@@ -143,14 +865,68 @@ function each(obj, iterator, context) {
 }
 
 /**
+ * wrap a method with a deprecation warning and stack trace
+ * @param {Function} method
+ * @param {String} name
+ * @param {String} message
+ * @returns {Function} A new function wrapping the supplied method.
+ */
+function deprecate(method, name, message) {
+    var deprecationMessage = 'DEPRECATED METHOD: ' + name + '\n' + message + ' AT \n';
+    return function() {
+        var e = new Error('get-stack-trace');
+        var stack = e && e.stack ? e.stack.replace(/^[^\(]+?[\n$]/gm, '')
+            .replace(/^\s+at\s+/gm, '')
+            .replace(/^Object.<anonymous>\s*\(/gm, '{anonymous}()@') : 'Unknown Stack Trace';
+
+        var log = window.console && (window.console.warn || window.console.log);
+        if (log) {
+            log.call(window.console, deprecationMessage, stack);
+        }
+        return method.apply(this, arguments);
+    };
+}
+
+/**
+ * extend object.
+ * means that properties in dest will be overwritten by the ones in src.
+ * @param {Object} target
+ * @param {...Object} objects_to_assign
+ * @returns {Object} target
+ */
+var assign;
+if (typeof Object.assign !== 'function') {
+    assign = function assign(target) {
+        if (target === undefined || target === null) {
+            throw new TypeError('Cannot convert undefined or null to object');
+        }
+
+        var output = Object(target);
+        for (var index = 1; index < arguments.length; index++) {
+            var source = arguments[index];
+            if (source !== undefined && source !== null) {
+                for (var nextKey in source) {
+                    if (source.hasOwnProperty(nextKey)) {
+                        output[nextKey] = source[nextKey];
+                    }
+                }
+            }
+        }
+        return output;
+    };
+} else {
+    assign = Object.assign;
+}
+
+/**
  * extend object.
  * means that properties in dest will be overwritten by the ones in src.
  * @param {Object} dest
  * @param {Object} src
- * @param {Boolean} [merge]
+ * @param {Boolean=false} [merge]
  * @returns {Object} dest
  */
-function extend(dest, src, merge) {
+var extend = deprecate(function extend(dest, src, merge) {
     var keys = Object.keys(src);
     var i = 0;
     while (i < keys.length) {
@@ -160,7 +936,7 @@ function extend(dest, src, merge) {
         i++;
     }
     return dest;
-}
+}, 'extend', 'Use `assign`.');
 
 /**
  * merge the values from src in the dest.
@@ -169,9 +945,9 @@ function extend(dest, src, merge) {
  * @param {Object} src
  * @returns {Object} dest
  */
-function merge(dest, src) {
+var merge = deprecate(function merge(dest, src) {
     return extend(dest, src, true);
-}
+}, 'merge', 'Use `assign`.');
 
 /**
  * simple class inheritance
@@ -188,7 +964,7 @@ function inherit(child, base, properties) {
     childP._super = baseP;
 
     if (properties) {
-        extend(childP, properties);
+        assign(childP, properties);
     }
 }
 
@@ -391,8 +1167,8 @@ function uniqueId() {
  * @returns {DocumentView|Window}
  */
 function getWindowForElement(element) {
-    var doc = element.ownerDocument;
-    return (doc.defaultView || doc.parentWindow);
+    var doc = element.ownerDocument || element;
+    return (doc.defaultView || doc.parentWindow || window);
 }
 
 var MOBILE_REGEX = /mobile|tablet|ip(ad|hone|od)|android/i;
@@ -571,8 +1347,16 @@ function computeInputData(manager, input) {
     computeDeltaXY(session, input);
     input.offsetDirection = getDirection(input.deltaX, input.deltaY);
 
+    var overallVelocity = getVelocity(input.deltaTime, input.deltaX, input.deltaY);
+    input.overallVelocityX = overallVelocity.x;
+    input.overallVelocityY = overallVelocity.y;
+    input.overallVelocity = (abs(overallVelocity.x) > abs(overallVelocity.y)) ? overallVelocity.x : overallVelocity.y;
+
     input.scale = firstMultiple ? getScale(firstMultiple.pointers, pointers) : 1;
     input.rotation = firstMultiple ? getRotation(firstMultiple.pointers, pointers) : 0;
+
+    input.maxPointers = !session.prevInput ? input.pointers.length : ((input.pointers.length >
+        session.prevInput.maxPointers) ? input.pointers.length : session.prevInput.maxPointers);
 
     computeIntervalInputData(session, input);
 
@@ -617,8 +1401,8 @@ function computeIntervalInputData(session, input) {
         velocity, velocityX, velocityY, direction;
 
     if (input.eventType != INPUT_CANCEL && (deltaTime > COMPUTE_INTERVAL || last.velocity === undefined)) {
-        var deltaX = last.deltaX - input.deltaX;
-        var deltaY = last.deltaY - input.deltaY;
+        var deltaX = input.deltaX - last.deltaX;
+        var deltaY = input.deltaY - last.deltaY;
 
         var v = getVelocity(deltaTime, deltaX, deltaY);
         velocityX = v.x;
@@ -723,9 +1507,9 @@ function getDirection(x, y) {
     }
 
     if (abs(x) >= abs(y)) {
-        return x > 0 ? DIRECTION_LEFT : DIRECTION_RIGHT;
+        return x < 0 ? DIRECTION_LEFT : DIRECTION_RIGHT;
     }
-    return y > 0 ? DIRECTION_UP : DIRECTION_DOWN;
+    return y < 0 ? DIRECTION_UP : DIRECTION_DOWN;
 }
 
 /**
@@ -768,7 +1552,7 @@ function getAngle(p1, p2, props) {
  * @return {Number} rotation
  */
 function getRotation(start, end) {
-    return getAngle(end[1], end[0], PROPS_CLIENT_XY) - getAngle(start[1], start[0], PROPS_CLIENT_XY);
+    return getAngle(end[1], end[0], PROPS_CLIENT_XY) + getAngle(start[1], start[0], PROPS_CLIENT_XY);
 }
 
 /**
@@ -861,7 +1645,7 @@ var POINTER_ELEMENT_EVENTS = 'pointerdown';
 var POINTER_WINDOW_EVENTS = 'pointermove pointerup pointercancel';
 
 // IE10 has prefixed support, and case-sensitive
-if (window.MSPointerEvent) {
+if (window.MSPointerEvent && !window.PointerEvent) {
     POINTER_ELEMENT_EVENTS = 'MSPointerDown';
     POINTER_WINDOW_EVENTS = 'MSPointerMove MSPointerUp MSPointerCancel';
 }
@@ -1185,7 +1969,7 @@ TouchAction.prototype = {
             value = this.compute();
         }
 
-        if (NATIVE_TOUCH_ACTION) {
+        if (NATIVE_TOUCH_ACTION && this.manager.element.style) {
             this.manager.element.style[PREFIXED_TOUCH_ACTION] = value;
         }
         this.actions = value.toLowerCase().trim();
@@ -1236,6 +2020,23 @@ TouchAction.prototype = {
         var hasPanY = inStr(actions, TOUCH_ACTION_PAN_Y);
         var hasPanX = inStr(actions, TOUCH_ACTION_PAN_X);
 
+        if (hasNone) {
+            //do not prevent defaults if this is a tap gesture
+
+            var isTapPointer = input.pointers.length === 1;
+            var isTapMovement = input.distance < 2;
+            var isTapTouchTime = input.deltaTime < 250;
+
+            if (isTapPointer && isTapMovement && isTapTouchTime) {
+                return;
+            }
+        }
+
+        if (hasPanX && hasPanY) {
+            // `pan-x pan-y` means browser handles all scrolling/panning, do not prevent
+            return;
+        }
+
         if (hasNone ||
             (hasPanY && direction & DIRECTION_HORIZONTAL) ||
             (hasPanX && direction & DIRECTION_VERTICAL)) {
@@ -1267,9 +2068,12 @@ function cleanTouchActions(actions) {
     var hasPanX = inStr(actions, TOUCH_ACTION_PAN_X);
     var hasPanY = inStr(actions, TOUCH_ACTION_PAN_Y);
 
-    // pan-x and pan-y can be combined
+    // if both pan-x and pan-y are set (different recognizers
+    // for different directions, e.g. horizontal pan but vertical swipe?)
+    // we need none (as otherwise with pan-x pan-y combined none of these
+    // recognizers will work, since the browser would handle all panning
     if (hasPanX && hasPanY) {
-        return TOUCH_ACTION_PAN_X + ' ' + TOUCH_ACTION_PAN_Y;
+        return TOUCH_ACTION_NONE;
     }
 
     // pan-x OR pan-y
@@ -1327,10 +2131,11 @@ var STATE_FAILED = 32;
  * @param {Object} options
  */
 function Recognizer(options) {
+    this.options = assign({}, this.defaults, options || {});
+
     this.id = uniqueId();
 
     this.manager = null;
-    this.options = merge(options || {}, this.defaults);
 
     // default is enable true
     this.options.enable = ifUndefined(this.options.enable, true);
@@ -1354,7 +2159,7 @@ Recognizer.prototype = {
      * @return {Recognizer}
      */
     set: function(options) {
-        extend(this.options, options);
+        assign(this.options, options);
 
         // also update the touchAction, in case something changed about the directions/enabled state
         this.manager && this.manager.touchAction.update();
@@ -1458,20 +2263,24 @@ Recognizer.prototype = {
         var self = this;
         var state = this.state;
 
-        function emit(withState) {
-            self.manager.emit(self.options.event + (withState ? stateStr(state) : ''), input);
+        function emit(event) {
+            self.manager.emit(event, input);
         }
 
         // 'panstart' and 'panmove'
         if (state < STATE_ENDED) {
-            emit(true);
+            emit(self.options.event + stateStr(state));
         }
 
-        emit(); // simple 'eventName' events
+        emit(self.options.event); // simple 'eventName' events
+
+        if (input.additionalEvent) { // additional event(panleft, panright, pinchin, pinchout...)
+            emit(input.additionalEvent);
+        }
 
         // panend and pancancel
         if (state >= STATE_ENDED) {
-            emit(true);
+            emit(self.options.event + stateStr(state));
         }
     },
 
@@ -1511,7 +2320,7 @@ Recognizer.prototype = {
     recognize: function(inputData) {
         // make a new copy of the inputData
         // so we can change the inputData without messing up the other recognizers
-        var inputDataClone = extend({}, inputData);
+        var inputDataClone = assign({}, inputData);
 
         // is is enabled and allow recognizing?
         if (!boolOrFn(this.options.enable, [this, inputDataClone])) {
@@ -1736,14 +2545,15 @@ inherit(PanRecognizer, AttrRecognizer, {
     },
 
     emit: function(input) {
+
         this.pX = input.deltaX;
         this.pY = input.deltaY;
 
         var direction = directionStr(input.direction);
-        if (direction) {
-            this.manager.emit(this.options.event + direction, input);
-        }
 
+        if (direction) {
+            input.additionalEvent = this.options.event + direction;
+        }
         this._super.emit.call(this, input);
     }
 });
@@ -1779,11 +2589,11 @@ inherit(PinchRecognizer, AttrRecognizer, {
     },
 
     emit: function(input) {
-        this._super.emit.call(this, input);
         if (input.scale !== 1) {
             var inOut = input.scale < 1 ? 'in' : 'out';
-            this.manager.emit(this.options.event + inOut, input);
+            input.additionalEvent = this.options.event + inOut;
         }
+        this._super.emit.call(this, input);
     }
 });
 
@@ -1808,8 +2618,8 @@ inherit(PressRecognizer, Recognizer, {
     defaults: {
         event: 'press',
         pointers: 1,
-        time: 500, // minimal time of the pointer to be pressed
-        threshold: 5 // a minimal movement is ok, but keep it low
+        time: 251, // minimal time of the pointer to be pressed
+        threshold: 9 // a minimal movement is ok, but keep it low
     },
 
     getTouchAction: function() {
@@ -1907,7 +2717,7 @@ inherit(SwipeRecognizer, AttrRecognizer, {
     defaults: {
         event: 'swipe',
         threshold: 10,
-        velocity: 0.65,
+        velocity: 0.3,
         direction: DIRECTION_HORIZONTAL | DIRECTION_VERTICAL,
         pointers: 1
     },
@@ -1921,21 +2731,22 @@ inherit(SwipeRecognizer, AttrRecognizer, {
         var velocity;
 
         if (direction & (DIRECTION_HORIZONTAL | DIRECTION_VERTICAL)) {
-            velocity = input.velocity;
+            velocity = input.overallVelocity;
         } else if (direction & DIRECTION_HORIZONTAL) {
-            velocity = input.velocityX;
+            velocity = input.overallVelocityX;
         } else if (direction & DIRECTION_VERTICAL) {
-            velocity = input.velocityY;
+            velocity = input.overallVelocityY;
         }
 
         return this._super.attrTest.call(this, input) &&
-            direction & input.direction &&
+            direction & input.offsetDirection &&
             input.distance > this.options.threshold &&
+            input.maxPointers == this.options.pointers &&
             abs(velocity) > this.options.velocity && input.eventType & INPUT_END;
     },
 
     emit: function(input) {
-        var direction = directionStr(input.direction);
+        var direction = directionStr(input.offsetDirection);
         if (direction) {
             this.manager.emit(this.options.event + direction, input);
         }
@@ -1978,7 +2789,7 @@ inherit(TapRecognizer, Recognizer, {
         taps: 1,
         interval: 300, // max time between the multi-tap taps
         time: 250, // max time of the pointer to be down (like finger on the screen)
-        threshold: 2, // a minimal movement is ok, but keep it low
+        threshold: 9, // a minimal movement is ok, but keep it low
         posThreshold: 10 // a multi-tap can be a bit off the initial position
     },
 
@@ -2052,7 +2863,7 @@ inherit(TapRecognizer, Recognizer, {
     },
 
     emit: function() {
-        if (this.state == STATE_RECOGNIZED ) {
+        if (this.state == STATE_RECOGNIZED) {
             this._input.tapCount = this.count;
             this.manager.emit(this.options.event, this._input);
         }
@@ -2060,7 +2871,7 @@ inherit(TapRecognizer, Recognizer, {
 });
 
 /**
- * Simple way to create an manager with a default set of recognizers.
+ * Simple way to create a manager with a default set of recognizers.
  * @param {HTMLElement} element
  * @param {Object} [options]
  * @constructor
@@ -2074,7 +2885,7 @@ function Hammer(element, options) {
 /**
  * @const {string}
  */
-Hammer.VERSION = '2.0.4';
+Hammer.VERSION = '2.0.6';
 
 /**
  * default settings
@@ -2126,12 +2937,12 @@ Hammer.defaults = {
      */
     preset: [
         // RecognizerClass, options, [recognizeWith, ...], [requireFailure, ...]
-        [RotateRecognizer, { enable: false }],
-        [PinchRecognizer, { enable: false }, ['rotate']],
-        [SwipeRecognizer,{ direction: DIRECTION_HORIZONTAL }],
-        [PanRecognizer, { direction: DIRECTION_HORIZONTAL }, ['swipe']],
+        [RotateRecognizer, {enable: false}],
+        [PinchRecognizer, {enable: false}, ['rotate']],
+        [SwipeRecognizer, {direction: DIRECTION_HORIZONTAL}],
+        [PanRecognizer, {direction: DIRECTION_HORIZONTAL}, ['swipe']],
         [TapRecognizer],
-        [TapRecognizer, { event: 'doubletap', taps: 2 }, ['tap']],
+        [TapRecognizer, {event: 'doubletap', taps: 2}, ['tap']],
         [PressRecognizer]
     ],
 
@@ -2198,9 +3009,8 @@ var FORCED_STOP = 2;
  * @constructor
  */
 function Manager(element, options) {
-    options = options || {};
+    this.options = assign({}, Hammer.defaults, options || {});
 
-    this.options = merge(options, Hammer.defaults);
     this.options.inputTarget = this.options.inputTarget || element;
 
     this.handlers = {};
@@ -2213,7 +3023,7 @@ function Manager(element, options) {
 
     toggleCssProps(this, true);
 
-    each(options.recognizers, function(item) {
+    each(this.options.recognizers, function(item) {
         var recognizer = this.add(new (item[0])(item[1]));
         item[2] && recognizer.recognizeWith(item[2]);
         item[3] && recognizer.requireFailure(item[3]);
@@ -2227,7 +3037,7 @@ Manager.prototype = {
      * @returns {Manager}
      */
     set: function(options) {
-        extend(this.options, options);
+        assign(this.options, options);
 
         // Options that need a little more setup
         if (options.touchAction) {
@@ -2361,11 +3171,19 @@ Manager.prototype = {
             return this;
         }
 
-        var recognizers = this.recognizers;
         recognizer = this.get(recognizer);
-        recognizers.splice(inArray(recognizers, recognizer), 1);
 
-        this.touchAction.update();
+        // let's make sure this recognizer exists
+        if (recognizer) {
+            var recognizers = this.recognizers;
+            var index = inArray(recognizers, recognizer);
+
+            if (index !== -1) {
+                recognizers.splice(index, 1);
+                this.touchAction.update();
+            }
+        }
+
         return this;
     },
 
@@ -2396,7 +3214,7 @@ Manager.prototype = {
             if (!handler) {
                 delete handlers[event];
             } else {
-                handlers[event].splice(inArray(handlers[event], handler), 1);
+                handlers[event] && handlers[event].splice(inArray(handlers[event], handler), 1);
             }
         });
         return this;
@@ -2452,6 +3270,9 @@ Manager.prototype = {
  */
 function toggleCssProps(manager, add) {
     var element = manager.element;
+    if (!element.style) {
+        return;
+    }
     each(manager.options.cssProps, function(value, name) {
         element.style[prefixed(element.style, name)] = add ? value : '';
     });
@@ -2469,7 +3290,7 @@ function triggerDomEvent(event, data) {
     data.target.dispatchEvent(gestureEvent);
 }
 
-extend(Hammer, {
+assign(Hammer, {
     INPUT_START: INPUT_START,
     INPUT_MOVE: INPUT_MOVE,
     INPUT_END: INPUT_END,
@@ -2516,12 +3337,18 @@ extend(Hammer, {
     each: each,
     merge: merge,
     extend: extend,
+    assign: assign,
     inherit: inherit,
     bindFn: bindFn,
     prefixed: prefixed
 });
 
-if (typeof define == TYPE_FUNCTION && define.amd) {
+// this prevents errors when Hammer is loaded in the presence of an AMD
+//  style loader but by script tag, not by the loader.
+var freeGlobal = (typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {})); // jshint ignore:line
+freeGlobal.Hammer = Hammer;
+
+if (typeof define === 'function' && define.amd) {
     define(function() {
         return Hammer;
     });
@@ -2533,7 +3360,2398 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
 
 })(window, document, 'Hammer');
 
-},{}],3:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
+/**
+ * Gets the last element of `array`.
+ *
+ * @static
+ * @memberOf _
+ * @category Array
+ * @param {Array} array The array to query.
+ * @returns {*} Returns the last element of `array`.
+ * @example
+ *
+ * _.last([1, 2, 3]);
+ * // => 3
+ */
+function last(array) {
+  var length = array ? array.length : 0;
+  return length ? array[length - 1] : undefined;
+}
+
+module.exports = last;
+
+},{}],8:[function(require,module,exports){
+var baseCallback = require('../internal/baseCallback'),
+    basePullAt = require('../internal/basePullAt');
+
+/**
+ * Removes all elements from `array` that `predicate` returns truthy for
+ * and returns an array of the removed elements. The predicate is bound to
+ * `thisArg` and invoked with three arguments: (value, index, array).
+ *
+ * If a property name is provided for `predicate` the created `_.property`
+ * style callback returns the property value of the given element.
+ *
+ * If a value is also provided for `thisArg` the created `_.matchesProperty`
+ * style callback returns `true` for elements that have a matching property
+ * value, else `false`.
+ *
+ * If an object is provided for `predicate` the created `_.matches` style
+ * callback returns `true` for elements that have the properties of the given
+ * object, else `false`.
+ *
+ * **Note:** Unlike `_.filter`, this method mutates `array`.
+ *
+ * @static
+ * @memberOf _
+ * @category Array
+ * @param {Array} array The array to modify.
+ * @param {Function|Object|string} [predicate=_.identity] The function invoked
+ *  per iteration.
+ * @param {*} [thisArg] The `this` binding of `predicate`.
+ * @returns {Array} Returns the new array of removed elements.
+ * @example
+ *
+ * var array = [1, 2, 3, 4];
+ * var evens = _.remove(array, function(n) {
+ *   return n % 2 == 0;
+ * });
+ *
+ * console.log(array);
+ * // => [1, 3]
+ *
+ * console.log(evens);
+ * // => [2, 4]
+ */
+function remove(array, predicate, thisArg) {
+  var result = [];
+  if (!(array && array.length)) {
+    return result;
+  }
+  var index = -1,
+      indexes = [],
+      length = array.length;
+
+  predicate = baseCallback(predicate, thisArg, 3);
+  while (++index < length) {
+    var value = array[index];
+    if (predicate(value, index, array)) {
+      result.push(value);
+      indexes.push(index);
+    }
+  }
+  basePullAt(array, indexes);
+  return result;
+}
+
+module.exports = remove;
+
+},{"../internal/baseCallback":17,"../internal/basePullAt":33}],9:[function(require,module,exports){
+var arrayFilter = require('../internal/arrayFilter'),
+    baseCallback = require('../internal/baseCallback'),
+    baseFilter = require('../internal/baseFilter'),
+    isArray = require('../lang/isArray');
+
+/**
+ * Iterates over elements of `collection`, returning an array of all elements
+ * `predicate` returns truthy for. The predicate is bound to `thisArg` and
+ * invoked with three arguments: (value, index|key, collection).
+ *
+ * If a property name is provided for `predicate` the created `_.property`
+ * style callback returns the property value of the given element.
+ *
+ * If a value is also provided for `thisArg` the created `_.matchesProperty`
+ * style callback returns `true` for elements that have a matching property
+ * value, else `false`.
+ *
+ * If an object is provided for `predicate` the created `_.matches` style
+ * callback returns `true` for elements that have the properties of the given
+ * object, else `false`.
+ *
+ * @static
+ * @memberOf _
+ * @alias select
+ * @category Collection
+ * @param {Array|Object|string} collection The collection to iterate over.
+ * @param {Function|Object|string} [predicate=_.identity] The function invoked
+ *  per iteration.
+ * @param {*} [thisArg] The `this` binding of `predicate`.
+ * @returns {Array} Returns the new filtered array.
+ * @example
+ *
+ * _.filter([4, 5, 6], function(n) {
+ *   return n % 2 == 0;
+ * });
+ * // => [4, 6]
+ *
+ * var users = [
+ *   { 'user': 'barney', 'age': 36, 'active': true },
+ *   { 'user': 'fred',   'age': 40, 'active': false }
+ * ];
+ *
+ * // using the `_.matches` callback shorthand
+ * _.pluck(_.filter(users, { 'age': 36, 'active': true }), 'user');
+ * // => ['barney']
+ *
+ * // using the `_.matchesProperty` callback shorthand
+ * _.pluck(_.filter(users, 'active', false), 'user');
+ * // => ['fred']
+ *
+ * // using the `_.property` callback shorthand
+ * _.pluck(_.filter(users, 'active'), 'user');
+ * // => ['barney']
+ */
+function filter(collection, predicate, thisArg) {
+  var func = isArray(collection) ? arrayFilter : baseFilter;
+  predicate = baseCallback(predicate, thisArg, 3);
+  return func(collection, predicate);
+}
+
+module.exports = filter;
+
+},{"../internal/arrayFilter":13,"../internal/baseCallback":17,"../internal/baseFilter":20,"../lang/isArray":59}],10:[function(require,module,exports){
+var baseEach = require('../internal/baseEach'),
+    createFind = require('../internal/createFind');
+
+/**
+ * Iterates over elements of `collection`, returning the first element
+ * `predicate` returns truthy for. The predicate is bound to `thisArg` and
+ * invoked with three arguments: (value, index|key, collection).
+ *
+ * If a property name is provided for `predicate` the created `_.property`
+ * style callback returns the property value of the given element.
+ *
+ * If a value is also provided for `thisArg` the created `_.matchesProperty`
+ * style callback returns `true` for elements that have a matching property
+ * value, else `false`.
+ *
+ * If an object is provided for `predicate` the created `_.matches` style
+ * callback returns `true` for elements that have the properties of the given
+ * object, else `false`.
+ *
+ * @static
+ * @memberOf _
+ * @alias detect
+ * @category Collection
+ * @param {Array|Object|string} collection The collection to search.
+ * @param {Function|Object|string} [predicate=_.identity] The function invoked
+ *  per iteration.
+ * @param {*} [thisArg] The `this` binding of `predicate`.
+ * @returns {*} Returns the matched element, else `undefined`.
+ * @example
+ *
+ * var users = [
+ *   { 'user': 'barney',  'age': 36, 'active': true },
+ *   { 'user': 'fred',    'age': 40, 'active': false },
+ *   { 'user': 'pebbles', 'age': 1,  'active': true }
+ * ];
+ *
+ * _.result(_.find(users, function(chr) {
+ *   return chr.age < 40;
+ * }), 'user');
+ * // => 'barney'
+ *
+ * // using the `_.matches` callback shorthand
+ * _.result(_.find(users, { 'age': 1, 'active': true }), 'user');
+ * // => 'pebbles'
+ *
+ * // using the `_.matchesProperty` callback shorthand
+ * _.result(_.find(users, 'active', false), 'user');
+ * // => 'fred'
+ *
+ * // using the `_.property` callback shorthand
+ * _.result(_.find(users, 'active'), 'user');
+ * // => 'barney'
+ */
+var find = createFind(baseEach);
+
+module.exports = find;
+
+},{"../internal/baseEach":19,"../internal/createFind":41}],11:[function(require,module,exports){
+var baseMatches = require('../internal/baseMatches'),
+    filter = require('./filter');
+
+/**
+ * Performs a deep comparison between each element in `collection` and the
+ * source object, returning an array of all elements that have equivalent
+ * property values.
+ *
+ * **Note:** This method supports comparing arrays, booleans, `Date` objects,
+ * numbers, `Object` objects, regexes, and strings. Objects are compared by
+ * their own, not inherited, enumerable properties. For comparing a single
+ * own or inherited property value see `_.matchesProperty`.
+ *
+ * @static
+ * @memberOf _
+ * @category Collection
+ * @param {Array|Object|string} collection The collection to search.
+ * @param {Object} source The object of property values to match.
+ * @returns {Array} Returns the new filtered array.
+ * @example
+ *
+ * var users = [
+ *   { 'user': 'barney', 'age': 36, 'active': false, 'pets': ['hoppy'] },
+ *   { 'user': 'fred',   'age': 40, 'active': true, 'pets': ['baby puss', 'dino'] }
+ * ];
+ *
+ * _.pluck(_.where(users, { 'age': 36, 'active': false }), 'user');
+ * // => ['barney']
+ *
+ * _.pluck(_.where(users, { 'pets': ['dino'] }), 'user');
+ * // => ['fred']
+ */
+function where(collection, source) {
+  return filter(collection, baseMatches(source));
+}
+
+module.exports = where;
+
+},{"../internal/baseMatches":29,"./filter":9}],12:[function(require,module,exports){
+/** Used as the `TypeError` message for "Functions" methods. */
+var FUNC_ERROR_TEXT = 'Expected a function';
+
+/* Native method references for those with the same name as other `lodash` methods. */
+var nativeMax = Math.max;
+
+/**
+ * Creates a function that invokes `func` with the `this` binding of the
+ * created function and arguments from `start` and beyond provided as an array.
+ *
+ * **Note:** This method is based on the [rest parameter](https://developer.mozilla.org/Web/JavaScript/Reference/Functions/rest_parameters).
+ *
+ * @static
+ * @memberOf _
+ * @category Function
+ * @param {Function} func The function to apply a rest parameter to.
+ * @param {number} [start=func.length-1] The start position of the rest parameter.
+ * @returns {Function} Returns the new function.
+ * @example
+ *
+ * var say = _.restParam(function(what, names) {
+ *   return what + ' ' + _.initial(names).join(', ') +
+ *     (_.size(names) > 1 ? ', & ' : '') + _.last(names);
+ * });
+ *
+ * say('hello', 'fred', 'barney', 'pebbles');
+ * // => 'hello fred, barney, & pebbles'
+ */
+function restParam(func, start) {
+  if (typeof func != 'function') {
+    throw new TypeError(FUNC_ERROR_TEXT);
+  }
+  start = nativeMax(start === undefined ? (func.length - 1) : (+start || 0), 0);
+  return function() {
+    var args = arguments,
+        index = -1,
+        length = nativeMax(args.length - start, 0),
+        rest = Array(length);
+
+    while (++index < length) {
+      rest[index] = args[start + index];
+    }
+    switch (start) {
+      case 0: return func.call(this, rest);
+      case 1: return func.call(this, args[0], rest);
+      case 2: return func.call(this, args[0], args[1], rest);
+    }
+    var otherArgs = Array(start + 1);
+    index = -1;
+    while (++index < start) {
+      otherArgs[index] = args[index];
+    }
+    otherArgs[start] = rest;
+    return func.apply(this, otherArgs);
+  };
+}
+
+module.exports = restParam;
+
+},{}],13:[function(require,module,exports){
+/**
+ * A specialized version of `_.filter` for arrays without support for callback
+ * shorthands and `this` binding.
+ *
+ * @private
+ * @param {Array} array The array to iterate over.
+ * @param {Function} predicate The function invoked per iteration.
+ * @returns {Array} Returns the new filtered array.
+ */
+function arrayFilter(array, predicate) {
+  var index = -1,
+      length = array.length,
+      resIndex = -1,
+      result = [];
+
+  while (++index < length) {
+    var value = array[index];
+    if (predicate(value, index, array)) {
+      result[++resIndex] = value;
+    }
+  }
+  return result;
+}
+
+module.exports = arrayFilter;
+
+},{}],14:[function(require,module,exports){
+/**
+ * A specialized version of `_.some` for arrays without support for callback
+ * shorthands and `this` binding.
+ *
+ * @private
+ * @param {Array} array The array to iterate over.
+ * @param {Function} predicate The function invoked per iteration.
+ * @returns {boolean} Returns `true` if any element passes the predicate check,
+ *  else `false`.
+ */
+function arraySome(array, predicate) {
+  var index = -1,
+      length = array.length;
+
+  while (++index < length) {
+    if (predicate(array[index], index, array)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+module.exports = arraySome;
+
+},{}],15:[function(require,module,exports){
+var keys = require('../object/keys');
+
+/**
+ * A specialized version of `_.assign` for customizing assigned values without
+ * support for argument juggling, multiple sources, and `this` binding `customizer`
+ * functions.
+ *
+ * @private
+ * @param {Object} object The destination object.
+ * @param {Object} source The source object.
+ * @param {Function} customizer The function to customize assigned values.
+ * @returns {Object} Returns `object`.
+ */
+function assignWith(object, source, customizer) {
+  var index = -1,
+      props = keys(source),
+      length = props.length;
+
+  while (++index < length) {
+    var key = props[index],
+        value = object[key],
+        result = customizer(value, source[key], key, object, source);
+
+    if ((result === result ? (result !== value) : (value === value)) ||
+        (value === undefined && !(key in object))) {
+      object[key] = result;
+    }
+  }
+  return object;
+}
+
+module.exports = assignWith;
+
+},{"../object/keys":66}],16:[function(require,module,exports){
+var baseCopy = require('./baseCopy'),
+    keys = require('../object/keys');
+
+/**
+ * The base implementation of `_.assign` without support for argument juggling,
+ * multiple sources, and `customizer` functions.
+ *
+ * @private
+ * @param {Object} object The destination object.
+ * @param {Object} source The source object.
+ * @returns {Object} Returns `object`.
+ */
+function baseAssign(object, source) {
+  return source == null
+    ? object
+    : baseCopy(source, keys(source), object);
+}
+
+module.exports = baseAssign;
+
+},{"../object/keys":66,"./baseCopy":18}],17:[function(require,module,exports){
+var baseMatches = require('./baseMatches'),
+    baseMatchesProperty = require('./baseMatchesProperty'),
+    bindCallback = require('./bindCallback'),
+    identity = require('../utility/identity'),
+    property = require('../utility/property');
+
+/**
+ * The base implementation of `_.callback` which supports specifying the
+ * number of arguments to provide to `func`.
+ *
+ * @private
+ * @param {*} [func=_.identity] The value to convert to a callback.
+ * @param {*} [thisArg] The `this` binding of `func`.
+ * @param {number} [argCount] The number of arguments to provide to `func`.
+ * @returns {Function} Returns the callback.
+ */
+function baseCallback(func, thisArg, argCount) {
+  var type = typeof func;
+  if (type == 'function') {
+    return thisArg === undefined
+      ? func
+      : bindCallback(func, thisArg, argCount);
+  }
+  if (func == null) {
+    return identity;
+  }
+  if (type == 'object') {
+    return baseMatches(func);
+  }
+  return thisArg === undefined
+    ? property(func)
+    : baseMatchesProperty(func, thisArg);
+}
+
+module.exports = baseCallback;
+
+},{"../utility/identity":69,"../utility/property":70,"./baseMatches":29,"./baseMatchesProperty":30,"./bindCallback":37}],18:[function(require,module,exports){
+/**
+ * Copies properties of `source` to `object`.
+ *
+ * @private
+ * @param {Object} source The object to copy properties from.
+ * @param {Array} props The property names to copy.
+ * @param {Object} [object={}] The object to copy properties to.
+ * @returns {Object} Returns `object`.
+ */
+function baseCopy(source, props, object) {
+  object || (object = {});
+
+  var index = -1,
+      length = props.length;
+
+  while (++index < length) {
+    var key = props[index];
+    object[key] = source[key];
+  }
+  return object;
+}
+
+module.exports = baseCopy;
+
+},{}],19:[function(require,module,exports){
+var baseForOwn = require('./baseForOwn'),
+    createBaseEach = require('./createBaseEach');
+
+/**
+ * The base implementation of `_.forEach` without support for callback
+ * shorthands and `this` binding.
+ *
+ * @private
+ * @param {Array|Object|string} collection The collection to iterate over.
+ * @param {Function} iteratee The function invoked per iteration.
+ * @returns {Array|Object|string} Returns `collection`.
+ */
+var baseEach = createBaseEach(baseForOwn);
+
+module.exports = baseEach;
+
+},{"./baseForOwn":24,"./createBaseEach":39}],20:[function(require,module,exports){
+var baseEach = require('./baseEach');
+
+/**
+ * The base implementation of `_.filter` without support for callback
+ * shorthands and `this` binding.
+ *
+ * @private
+ * @param {Array|Object|string} collection The collection to iterate over.
+ * @param {Function} predicate The function invoked per iteration.
+ * @returns {Array} Returns the new filtered array.
+ */
+function baseFilter(collection, predicate) {
+  var result = [];
+  baseEach(collection, function(value, index, collection) {
+    if (predicate(value, index, collection)) {
+      result.push(value);
+    }
+  });
+  return result;
+}
+
+module.exports = baseFilter;
+
+},{"./baseEach":19}],21:[function(require,module,exports){
+/**
+ * The base implementation of `_.find`, `_.findLast`, `_.findKey`, and `_.findLastKey`,
+ * without support for callback shorthands and `this` binding, which iterates
+ * over `collection` using the provided `eachFunc`.
+ *
+ * @private
+ * @param {Array|Object|string} collection The collection to search.
+ * @param {Function} predicate The function invoked per iteration.
+ * @param {Function} eachFunc The function to iterate over `collection`.
+ * @param {boolean} [retKey] Specify returning the key of the found element
+ *  instead of the element itself.
+ * @returns {*} Returns the found element or its key, else `undefined`.
+ */
+function baseFind(collection, predicate, eachFunc, retKey) {
+  var result;
+  eachFunc(collection, function(value, key, collection) {
+    if (predicate(value, key, collection)) {
+      result = retKey ? key : value;
+      return false;
+    }
+  });
+  return result;
+}
+
+module.exports = baseFind;
+
+},{}],22:[function(require,module,exports){
+/**
+ * The base implementation of `_.findIndex` and `_.findLastIndex` without
+ * support for callback shorthands and `this` binding.
+ *
+ * @private
+ * @param {Array} array The array to search.
+ * @param {Function} predicate The function invoked per iteration.
+ * @param {boolean} [fromRight] Specify iterating from right to left.
+ * @returns {number} Returns the index of the matched value, else `-1`.
+ */
+function baseFindIndex(array, predicate, fromRight) {
+  var length = array.length,
+      index = fromRight ? length : -1;
+
+  while ((fromRight ? index-- : ++index < length)) {
+    if (predicate(array[index], index, array)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+module.exports = baseFindIndex;
+
+},{}],23:[function(require,module,exports){
+var createBaseFor = require('./createBaseFor');
+
+/**
+ * The base implementation of `baseForIn` and `baseForOwn` which iterates
+ * over `object` properties returned by `keysFunc` invoking `iteratee` for
+ * each property. Iteratee functions may exit iteration early by explicitly
+ * returning `false`.
+ *
+ * @private
+ * @param {Object} object The object to iterate over.
+ * @param {Function} iteratee The function invoked per iteration.
+ * @param {Function} keysFunc The function to get the keys of `object`.
+ * @returns {Object} Returns `object`.
+ */
+var baseFor = createBaseFor();
+
+module.exports = baseFor;
+
+},{"./createBaseFor":40}],24:[function(require,module,exports){
+var baseFor = require('./baseFor'),
+    keys = require('../object/keys');
+
+/**
+ * The base implementation of `_.forOwn` without support for callback
+ * shorthands and `this` binding.
+ *
+ * @private
+ * @param {Object} object The object to iterate over.
+ * @param {Function} iteratee The function invoked per iteration.
+ * @returns {Object} Returns `object`.
+ */
+function baseForOwn(object, iteratee) {
+  return baseFor(object, iteratee, keys);
+}
+
+module.exports = baseForOwn;
+
+},{"../object/keys":66,"./baseFor":23}],25:[function(require,module,exports){
+var toObject = require('./toObject');
+
+/**
+ * The base implementation of `get` without support for string paths
+ * and default values.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @param {Array} path The path of the property to get.
+ * @param {string} [pathKey] The key representation of path.
+ * @returns {*} Returns the resolved value.
+ */
+function baseGet(object, path, pathKey) {
+  if (object == null) {
+    return;
+  }
+  if (pathKey !== undefined && pathKey in toObject(object)) {
+    path = [pathKey];
+  }
+  var index = 0,
+      length = path.length;
+
+  while (object != null && index < length) {
+    object = object[path[index++]];
+  }
+  return (index && index == length) ? object : undefined;
+}
+
+module.exports = baseGet;
+
+},{"./toObject":56}],26:[function(require,module,exports){
+var baseIsEqualDeep = require('./baseIsEqualDeep'),
+    isObject = require('../lang/isObject'),
+    isObjectLike = require('./isObjectLike');
+
+/**
+ * The base implementation of `_.isEqual` without support for `this` binding
+ * `customizer` functions.
+ *
+ * @private
+ * @param {*} value The value to compare.
+ * @param {*} other The other value to compare.
+ * @param {Function} [customizer] The function to customize comparing values.
+ * @param {boolean} [isLoose] Specify performing partial comparisons.
+ * @param {Array} [stackA] Tracks traversed `value` objects.
+ * @param {Array} [stackB] Tracks traversed `other` objects.
+ * @returns {boolean} Returns `true` if the values are equivalent, else `false`.
+ */
+function baseIsEqual(value, other, customizer, isLoose, stackA, stackB) {
+  if (value === other) {
+    return true;
+  }
+  if (value == null || other == null || (!isObject(value) && !isObjectLike(other))) {
+    return value !== value && other !== other;
+  }
+  return baseIsEqualDeep(value, other, baseIsEqual, customizer, isLoose, stackA, stackB);
+}
+
+module.exports = baseIsEqual;
+
+},{"../lang/isObject":62,"./baseIsEqualDeep":27,"./isObjectLike":53}],27:[function(require,module,exports){
+var equalArrays = require('./equalArrays'),
+    equalByTag = require('./equalByTag'),
+    equalObjects = require('./equalObjects'),
+    isArray = require('../lang/isArray'),
+    isTypedArray = require('../lang/isTypedArray');
+
+/** `Object#toString` result references. */
+var argsTag = '[object Arguments]',
+    arrayTag = '[object Array]',
+    objectTag = '[object Object]';
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/**
+ * Used to resolve the [`toStringTag`](http://ecma-international.org/ecma-262/6.0/#sec-object.prototype.tostring)
+ * of values.
+ */
+var objToString = objectProto.toString;
+
+/**
+ * A specialized version of `baseIsEqual` for arrays and objects which performs
+ * deep comparisons and tracks traversed objects enabling objects with circular
+ * references to be compared.
+ *
+ * @private
+ * @param {Object} object The object to compare.
+ * @param {Object} other The other object to compare.
+ * @param {Function} equalFunc The function to determine equivalents of values.
+ * @param {Function} [customizer] The function to customize comparing objects.
+ * @param {boolean} [isLoose] Specify performing partial comparisons.
+ * @param {Array} [stackA=[]] Tracks traversed `value` objects.
+ * @param {Array} [stackB=[]] Tracks traversed `other` objects.
+ * @returns {boolean} Returns `true` if the objects are equivalent, else `false`.
+ */
+function baseIsEqualDeep(object, other, equalFunc, customizer, isLoose, stackA, stackB) {
+  var objIsArr = isArray(object),
+      othIsArr = isArray(other),
+      objTag = arrayTag,
+      othTag = arrayTag;
+
+  if (!objIsArr) {
+    objTag = objToString.call(object);
+    if (objTag == argsTag) {
+      objTag = objectTag;
+    } else if (objTag != objectTag) {
+      objIsArr = isTypedArray(object);
+    }
+  }
+  if (!othIsArr) {
+    othTag = objToString.call(other);
+    if (othTag == argsTag) {
+      othTag = objectTag;
+    } else if (othTag != objectTag) {
+      othIsArr = isTypedArray(other);
+    }
+  }
+  var objIsObj = objTag == objectTag,
+      othIsObj = othTag == objectTag,
+      isSameTag = objTag == othTag;
+
+  if (isSameTag && !(objIsArr || objIsObj)) {
+    return equalByTag(object, other, objTag);
+  }
+  if (!isLoose) {
+    var objIsWrapped = objIsObj && hasOwnProperty.call(object, '__wrapped__'),
+        othIsWrapped = othIsObj && hasOwnProperty.call(other, '__wrapped__');
+
+    if (objIsWrapped || othIsWrapped) {
+      return equalFunc(objIsWrapped ? object.value() : object, othIsWrapped ? other.value() : other, customizer, isLoose, stackA, stackB);
+    }
+  }
+  if (!isSameTag) {
+    return false;
+  }
+  // Assume cyclic values are equal.
+  // For more information on detecting circular references see https://es5.github.io/#JO.
+  stackA || (stackA = []);
+  stackB || (stackB = []);
+
+  var length = stackA.length;
+  while (length--) {
+    if (stackA[length] == object) {
+      return stackB[length] == other;
+    }
+  }
+  // Add `object` and `other` to the stack of traversed objects.
+  stackA.push(object);
+  stackB.push(other);
+
+  var result = (objIsArr ? equalArrays : equalObjects)(object, other, equalFunc, customizer, isLoose, stackA, stackB);
+
+  stackA.pop();
+  stackB.pop();
+
+  return result;
+}
+
+module.exports = baseIsEqualDeep;
+
+},{"../lang/isArray":59,"../lang/isTypedArray":63,"./equalArrays":42,"./equalByTag":43,"./equalObjects":44}],28:[function(require,module,exports){
+var baseIsEqual = require('./baseIsEqual'),
+    toObject = require('./toObject');
+
+/**
+ * The base implementation of `_.isMatch` without support for callback
+ * shorthands and `this` binding.
+ *
+ * @private
+ * @param {Object} object The object to inspect.
+ * @param {Array} matchData The propery names, values, and compare flags to match.
+ * @param {Function} [customizer] The function to customize comparing objects.
+ * @returns {boolean} Returns `true` if `object` is a match, else `false`.
+ */
+function baseIsMatch(object, matchData, customizer) {
+  var index = matchData.length,
+      length = index,
+      noCustomizer = !customizer;
+
+  if (object == null) {
+    return !length;
+  }
+  object = toObject(object);
+  while (index--) {
+    var data = matchData[index];
+    if ((noCustomizer && data[2])
+          ? data[1] !== object[data[0]]
+          : !(data[0] in object)
+        ) {
+      return false;
+    }
+  }
+  while (++index < length) {
+    data = matchData[index];
+    var key = data[0],
+        objValue = object[key],
+        srcValue = data[1];
+
+    if (noCustomizer && data[2]) {
+      if (objValue === undefined && !(key in object)) {
+        return false;
+      }
+    } else {
+      var result = customizer ? customizer(objValue, srcValue, key) : undefined;
+      if (!(result === undefined ? baseIsEqual(srcValue, objValue, customizer, true) : result)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+module.exports = baseIsMatch;
+
+},{"./baseIsEqual":26,"./toObject":56}],29:[function(require,module,exports){
+var baseIsMatch = require('./baseIsMatch'),
+    getMatchData = require('./getMatchData'),
+    toObject = require('./toObject');
+
+/**
+ * The base implementation of `_.matches` which does not clone `source`.
+ *
+ * @private
+ * @param {Object} source The object of property values to match.
+ * @returns {Function} Returns the new function.
+ */
+function baseMatches(source) {
+  var matchData = getMatchData(source);
+  if (matchData.length == 1 && matchData[0][2]) {
+    var key = matchData[0][0],
+        value = matchData[0][1];
+
+    return function(object) {
+      if (object == null) {
+        return false;
+      }
+      return object[key] === value && (value !== undefined || (key in toObject(object)));
+    };
+  }
+  return function(object) {
+    return baseIsMatch(object, matchData);
+  };
+}
+
+module.exports = baseMatches;
+
+},{"./baseIsMatch":28,"./getMatchData":46,"./toObject":56}],30:[function(require,module,exports){
+var baseGet = require('./baseGet'),
+    baseIsEqual = require('./baseIsEqual'),
+    baseSlice = require('./baseSlice'),
+    isArray = require('../lang/isArray'),
+    isKey = require('./isKey'),
+    isStrictComparable = require('./isStrictComparable'),
+    last = require('../array/last'),
+    toObject = require('./toObject'),
+    toPath = require('./toPath');
+
+/**
+ * The base implementation of `_.matchesProperty` which does not clone `srcValue`.
+ *
+ * @private
+ * @param {string} path The path of the property to get.
+ * @param {*} srcValue The value to compare.
+ * @returns {Function} Returns the new function.
+ */
+function baseMatchesProperty(path, srcValue) {
+  var isArr = isArray(path),
+      isCommon = isKey(path) && isStrictComparable(srcValue),
+      pathKey = (path + '');
+
+  path = toPath(path);
+  return function(object) {
+    if (object == null) {
+      return false;
+    }
+    var key = pathKey;
+    object = toObject(object);
+    if ((isArr || !isCommon) && !(key in object)) {
+      object = path.length == 1 ? object : baseGet(object, baseSlice(path, 0, -1));
+      if (object == null) {
+        return false;
+      }
+      key = last(path);
+      object = toObject(object);
+    }
+    return object[key] === srcValue
+      ? (srcValue !== undefined || (key in object))
+      : baseIsEqual(srcValue, object[key], undefined, true);
+  };
+}
+
+module.exports = baseMatchesProperty;
+
+},{"../array/last":7,"../lang/isArray":59,"./baseGet":25,"./baseIsEqual":26,"./baseSlice":35,"./isKey":51,"./isStrictComparable":54,"./toObject":56,"./toPath":57}],31:[function(require,module,exports){
+/**
+ * The base implementation of `_.property` without support for deep paths.
+ *
+ * @private
+ * @param {string} key The key of the property to get.
+ * @returns {Function} Returns the new function.
+ */
+function baseProperty(key) {
+  return function(object) {
+    return object == null ? undefined : object[key];
+  };
+}
+
+module.exports = baseProperty;
+
+},{}],32:[function(require,module,exports){
+var baseGet = require('./baseGet'),
+    toPath = require('./toPath');
+
+/**
+ * A specialized version of `baseProperty` which supports deep paths.
+ *
+ * @private
+ * @param {Array|string} path The path of the property to get.
+ * @returns {Function} Returns the new function.
+ */
+function basePropertyDeep(path) {
+  var pathKey = (path + '');
+  path = toPath(path);
+  return function(object) {
+    return baseGet(object, path, pathKey);
+  };
+}
+
+module.exports = basePropertyDeep;
+
+},{"./baseGet":25,"./toPath":57}],33:[function(require,module,exports){
+var isIndex = require('./isIndex');
+
+/** Used for native method references. */
+var arrayProto = Array.prototype;
+
+/** Native method references. */
+var splice = arrayProto.splice;
+
+/**
+ * The base implementation of `_.pullAt` without support for individual
+ * index arguments and capturing the removed elements.
+ *
+ * @private
+ * @param {Array} array The array to modify.
+ * @param {number[]} indexes The indexes of elements to remove.
+ * @returns {Array} Returns `array`.
+ */
+function basePullAt(array, indexes) {
+  var length = array ? indexes.length : 0;
+  while (length--) {
+    var index = indexes[length];
+    if (index != previous && isIndex(index)) {
+      var previous = index;
+      splice.call(array, index, 1);
+    }
+  }
+  return array;
+}
+
+module.exports = basePullAt;
+
+},{"./isIndex":49}],34:[function(require,module,exports){
+/* Native method references for those with the same name as other `lodash` methods. */
+var nativeFloor = Math.floor,
+    nativeRandom = Math.random;
+
+/**
+ * The base implementation of `_.random` without support for argument juggling
+ * and returning floating-point numbers.
+ *
+ * @private
+ * @param {number} min The minimum possible value.
+ * @param {number} max The maximum possible value.
+ * @returns {number} Returns the random number.
+ */
+function baseRandom(min, max) {
+  return min + nativeFloor(nativeRandom() * (max - min + 1));
+}
+
+module.exports = baseRandom;
+
+},{}],35:[function(require,module,exports){
+/**
+ * The base implementation of `_.slice` without an iteratee call guard.
+ *
+ * @private
+ * @param {Array} array The array to slice.
+ * @param {number} [start=0] The start position.
+ * @param {number} [end=array.length] The end position.
+ * @returns {Array} Returns the slice of `array`.
+ */
+function baseSlice(array, start, end) {
+  var index = -1,
+      length = array.length;
+
+  start = start == null ? 0 : (+start || 0);
+  if (start < 0) {
+    start = -start > length ? 0 : (length + start);
+  }
+  end = (end === undefined || end > length) ? length : (+end || 0);
+  if (end < 0) {
+    end += length;
+  }
+  length = start > end ? 0 : ((end - start) >>> 0);
+  start >>>= 0;
+
+  var result = Array(length);
+  while (++index < length) {
+    result[index] = array[index + start];
+  }
+  return result;
+}
+
+module.exports = baseSlice;
+
+},{}],36:[function(require,module,exports){
+/**
+ * Converts `value` to a string if it's not one. An empty string is returned
+ * for `null` or `undefined` values.
+ *
+ * @private
+ * @param {*} value The value to process.
+ * @returns {string} Returns the string.
+ */
+function baseToString(value) {
+  return value == null ? '' : (value + '');
+}
+
+module.exports = baseToString;
+
+},{}],37:[function(require,module,exports){
+var identity = require('../utility/identity');
+
+/**
+ * A specialized version of `baseCallback` which only supports `this` binding
+ * and specifying the number of arguments to provide to `func`.
+ *
+ * @private
+ * @param {Function} func The function to bind.
+ * @param {*} thisArg The `this` binding of `func`.
+ * @param {number} [argCount] The number of arguments to provide to `func`.
+ * @returns {Function} Returns the callback.
+ */
+function bindCallback(func, thisArg, argCount) {
+  if (typeof func != 'function') {
+    return identity;
+  }
+  if (thisArg === undefined) {
+    return func;
+  }
+  switch (argCount) {
+    case 1: return function(value) {
+      return func.call(thisArg, value);
+    };
+    case 3: return function(value, index, collection) {
+      return func.call(thisArg, value, index, collection);
+    };
+    case 4: return function(accumulator, value, index, collection) {
+      return func.call(thisArg, accumulator, value, index, collection);
+    };
+    case 5: return function(value, other, key, object, source) {
+      return func.call(thisArg, value, other, key, object, source);
+    };
+  }
+  return function() {
+    return func.apply(thisArg, arguments);
+  };
+}
+
+module.exports = bindCallback;
+
+},{"../utility/identity":69}],38:[function(require,module,exports){
+var bindCallback = require('./bindCallback'),
+    isIterateeCall = require('./isIterateeCall'),
+    restParam = require('../function/restParam');
+
+/**
+ * Creates a `_.assign`, `_.defaults`, or `_.merge` function.
+ *
+ * @private
+ * @param {Function} assigner The function to assign values.
+ * @returns {Function} Returns the new assigner function.
+ */
+function createAssigner(assigner) {
+  return restParam(function(object, sources) {
+    var index = -1,
+        length = object == null ? 0 : sources.length,
+        customizer = length > 2 ? sources[length - 2] : undefined,
+        guard = length > 2 ? sources[2] : undefined,
+        thisArg = length > 1 ? sources[length - 1] : undefined;
+
+    if (typeof customizer == 'function') {
+      customizer = bindCallback(customizer, thisArg, 5);
+      length -= 2;
+    } else {
+      customizer = typeof thisArg == 'function' ? thisArg : undefined;
+      length -= (customizer ? 1 : 0);
+    }
+    if (guard && isIterateeCall(sources[0], sources[1], guard)) {
+      customizer = length < 3 ? undefined : customizer;
+      length = 1;
+    }
+    while (++index < length) {
+      var source = sources[index];
+      if (source) {
+        assigner(object, source, customizer);
+      }
+    }
+    return object;
+  });
+}
+
+module.exports = createAssigner;
+
+},{"../function/restParam":12,"./bindCallback":37,"./isIterateeCall":50}],39:[function(require,module,exports){
+var getLength = require('./getLength'),
+    isLength = require('./isLength'),
+    toObject = require('./toObject');
+
+/**
+ * Creates a `baseEach` or `baseEachRight` function.
+ *
+ * @private
+ * @param {Function} eachFunc The function to iterate over a collection.
+ * @param {boolean} [fromRight] Specify iterating from right to left.
+ * @returns {Function} Returns the new base function.
+ */
+function createBaseEach(eachFunc, fromRight) {
+  return function(collection, iteratee) {
+    var length = collection ? getLength(collection) : 0;
+    if (!isLength(length)) {
+      return eachFunc(collection, iteratee);
+    }
+    var index = fromRight ? length : -1,
+        iterable = toObject(collection);
+
+    while ((fromRight ? index-- : ++index < length)) {
+      if (iteratee(iterable[index], index, iterable) === false) {
+        break;
+      }
+    }
+    return collection;
+  };
+}
+
+module.exports = createBaseEach;
+
+},{"./getLength":45,"./isLength":52,"./toObject":56}],40:[function(require,module,exports){
+var toObject = require('./toObject');
+
+/**
+ * Creates a base function for `_.forIn` or `_.forInRight`.
+ *
+ * @private
+ * @param {boolean} [fromRight] Specify iterating from right to left.
+ * @returns {Function} Returns the new base function.
+ */
+function createBaseFor(fromRight) {
+  return function(object, iteratee, keysFunc) {
+    var iterable = toObject(object),
+        props = keysFunc(object),
+        length = props.length,
+        index = fromRight ? length : -1;
+
+    while ((fromRight ? index-- : ++index < length)) {
+      var key = props[index];
+      if (iteratee(iterable[key], key, iterable) === false) {
+        break;
+      }
+    }
+    return object;
+  };
+}
+
+module.exports = createBaseFor;
+
+},{"./toObject":56}],41:[function(require,module,exports){
+var baseCallback = require('./baseCallback'),
+    baseFind = require('./baseFind'),
+    baseFindIndex = require('./baseFindIndex'),
+    isArray = require('../lang/isArray');
+
+/**
+ * Creates a `_.find` or `_.findLast` function.
+ *
+ * @private
+ * @param {Function} eachFunc The function to iterate over a collection.
+ * @param {boolean} [fromRight] Specify iterating from right to left.
+ * @returns {Function} Returns the new find function.
+ */
+function createFind(eachFunc, fromRight) {
+  return function(collection, predicate, thisArg) {
+    predicate = baseCallback(predicate, thisArg, 3);
+    if (isArray(collection)) {
+      var index = baseFindIndex(collection, predicate, fromRight);
+      return index > -1 ? collection[index] : undefined;
+    }
+    return baseFind(collection, predicate, eachFunc);
+  };
+}
+
+module.exports = createFind;
+
+},{"../lang/isArray":59,"./baseCallback":17,"./baseFind":21,"./baseFindIndex":22}],42:[function(require,module,exports){
+var arraySome = require('./arraySome');
+
+/**
+ * A specialized version of `baseIsEqualDeep` for arrays with support for
+ * partial deep comparisons.
+ *
+ * @private
+ * @param {Array} array The array to compare.
+ * @param {Array} other The other array to compare.
+ * @param {Function} equalFunc The function to determine equivalents of values.
+ * @param {Function} [customizer] The function to customize comparing arrays.
+ * @param {boolean} [isLoose] Specify performing partial comparisons.
+ * @param {Array} [stackA] Tracks traversed `value` objects.
+ * @param {Array} [stackB] Tracks traversed `other` objects.
+ * @returns {boolean} Returns `true` if the arrays are equivalent, else `false`.
+ */
+function equalArrays(array, other, equalFunc, customizer, isLoose, stackA, stackB) {
+  var index = -1,
+      arrLength = array.length,
+      othLength = other.length;
+
+  if (arrLength != othLength && !(isLoose && othLength > arrLength)) {
+    return false;
+  }
+  // Ignore non-index properties.
+  while (++index < arrLength) {
+    var arrValue = array[index],
+        othValue = other[index],
+        result = customizer ? customizer(isLoose ? othValue : arrValue, isLoose ? arrValue : othValue, index) : undefined;
+
+    if (result !== undefined) {
+      if (result) {
+        continue;
+      }
+      return false;
+    }
+    // Recursively compare arrays (susceptible to call stack limits).
+    if (isLoose) {
+      if (!arraySome(other, function(othValue) {
+            return arrValue === othValue || equalFunc(arrValue, othValue, customizer, isLoose, stackA, stackB);
+          })) {
+        return false;
+      }
+    } else if (!(arrValue === othValue || equalFunc(arrValue, othValue, customizer, isLoose, stackA, stackB))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+module.exports = equalArrays;
+
+},{"./arraySome":14}],43:[function(require,module,exports){
+/** `Object#toString` result references. */
+var boolTag = '[object Boolean]',
+    dateTag = '[object Date]',
+    errorTag = '[object Error]',
+    numberTag = '[object Number]',
+    regexpTag = '[object RegExp]',
+    stringTag = '[object String]';
+
+/**
+ * A specialized version of `baseIsEqualDeep` for comparing objects of
+ * the same `toStringTag`.
+ *
+ * **Note:** This function only supports comparing values with tags of
+ * `Boolean`, `Date`, `Error`, `Number`, `RegExp`, or `String`.
+ *
+ * @private
+ * @param {Object} object The object to compare.
+ * @param {Object} other The other object to compare.
+ * @param {string} tag The `toStringTag` of the objects to compare.
+ * @returns {boolean} Returns `true` if the objects are equivalent, else `false`.
+ */
+function equalByTag(object, other, tag) {
+  switch (tag) {
+    case boolTag:
+    case dateTag:
+      // Coerce dates and booleans to numbers, dates to milliseconds and booleans
+      // to `1` or `0` treating invalid dates coerced to `NaN` as not equal.
+      return +object == +other;
+
+    case errorTag:
+      return object.name == other.name && object.message == other.message;
+
+    case numberTag:
+      // Treat `NaN` vs. `NaN` as equal.
+      return (object != +object)
+        ? other != +other
+        : object == +other;
+
+    case regexpTag:
+    case stringTag:
+      // Coerce regexes to strings and treat strings primitives and string
+      // objects as equal. See https://es5.github.io/#x15.10.6.4 for more details.
+      return object == (other + '');
+  }
+  return false;
+}
+
+module.exports = equalByTag;
+
+},{}],44:[function(require,module,exports){
+var keys = require('../object/keys');
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/**
+ * A specialized version of `baseIsEqualDeep` for objects with support for
+ * partial deep comparisons.
+ *
+ * @private
+ * @param {Object} object The object to compare.
+ * @param {Object} other The other object to compare.
+ * @param {Function} equalFunc The function to determine equivalents of values.
+ * @param {Function} [customizer] The function to customize comparing values.
+ * @param {boolean} [isLoose] Specify performing partial comparisons.
+ * @param {Array} [stackA] Tracks traversed `value` objects.
+ * @param {Array} [stackB] Tracks traversed `other` objects.
+ * @returns {boolean} Returns `true` if the objects are equivalent, else `false`.
+ */
+function equalObjects(object, other, equalFunc, customizer, isLoose, stackA, stackB) {
+  var objProps = keys(object),
+      objLength = objProps.length,
+      othProps = keys(other),
+      othLength = othProps.length;
+
+  if (objLength != othLength && !isLoose) {
+    return false;
+  }
+  var index = objLength;
+  while (index--) {
+    var key = objProps[index];
+    if (!(isLoose ? key in other : hasOwnProperty.call(other, key))) {
+      return false;
+    }
+  }
+  var skipCtor = isLoose;
+  while (++index < objLength) {
+    key = objProps[index];
+    var objValue = object[key],
+        othValue = other[key],
+        result = customizer ? customizer(isLoose ? othValue : objValue, isLoose? objValue : othValue, key) : undefined;
+
+    // Recursively compare objects (susceptible to call stack limits).
+    if (!(result === undefined ? equalFunc(objValue, othValue, customizer, isLoose, stackA, stackB) : result)) {
+      return false;
+    }
+    skipCtor || (skipCtor = key == 'constructor');
+  }
+  if (!skipCtor) {
+    var objCtor = object.constructor,
+        othCtor = other.constructor;
+
+    // Non `Object` object instances with different constructors are not equal.
+    if (objCtor != othCtor &&
+        ('constructor' in object && 'constructor' in other) &&
+        !(typeof objCtor == 'function' && objCtor instanceof objCtor &&
+          typeof othCtor == 'function' && othCtor instanceof othCtor)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+module.exports = equalObjects;
+
+},{"../object/keys":66}],45:[function(require,module,exports){
+var baseProperty = require('./baseProperty');
+
+/**
+ * Gets the "length" property value of `object`.
+ *
+ * **Note:** This function is used to avoid a [JIT bug](https://bugs.webkit.org/show_bug.cgi?id=142792)
+ * that affects Safari on at least iOS 8.1-8.3 ARM64.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {*} Returns the "length" value.
+ */
+var getLength = baseProperty('length');
+
+module.exports = getLength;
+
+},{"./baseProperty":31}],46:[function(require,module,exports){
+var isStrictComparable = require('./isStrictComparable'),
+    pairs = require('../object/pairs');
+
+/**
+ * Gets the propery names, values, and compare flags of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the match data of `object`.
+ */
+function getMatchData(object) {
+  var result = pairs(object),
+      length = result.length;
+
+  while (length--) {
+    result[length][2] = isStrictComparable(result[length][1]);
+  }
+  return result;
+}
+
+module.exports = getMatchData;
+
+},{"../object/pairs":68,"./isStrictComparable":54}],47:[function(require,module,exports){
+var isNative = require('../lang/isNative');
+
+/**
+ * Gets the native function at `key` of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @param {string} key The key of the method to get.
+ * @returns {*} Returns the function if it's native, else `undefined`.
+ */
+function getNative(object, key) {
+  var value = object == null ? undefined : object[key];
+  return isNative(value) ? value : undefined;
+}
+
+module.exports = getNative;
+
+},{"../lang/isNative":61}],48:[function(require,module,exports){
+var getLength = require('./getLength'),
+    isLength = require('./isLength');
+
+/**
+ * Checks if `value` is array-like.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is array-like, else `false`.
+ */
+function isArrayLike(value) {
+  return value != null && isLength(getLength(value));
+}
+
+module.exports = isArrayLike;
+
+},{"./getLength":45,"./isLength":52}],49:[function(require,module,exports){
+/** Used to detect unsigned integer values. */
+var reIsUint = /^\d+$/;
+
+/**
+ * Used as the [maximum length](http://ecma-international.org/ecma-262/6.0/#sec-number.max_safe_integer)
+ * of an array-like value.
+ */
+var MAX_SAFE_INTEGER = 9007199254740991;
+
+/**
+ * Checks if `value` is a valid array-like index.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @param {number} [length=MAX_SAFE_INTEGER] The upper bounds of a valid index.
+ * @returns {boolean} Returns `true` if `value` is a valid index, else `false`.
+ */
+function isIndex(value, length) {
+  value = (typeof value == 'number' || reIsUint.test(value)) ? +value : -1;
+  length = length == null ? MAX_SAFE_INTEGER : length;
+  return value > -1 && value % 1 == 0 && value < length;
+}
+
+module.exports = isIndex;
+
+},{}],50:[function(require,module,exports){
+var isArrayLike = require('./isArrayLike'),
+    isIndex = require('./isIndex'),
+    isObject = require('../lang/isObject');
+
+/**
+ * Checks if the provided arguments are from an iteratee call.
+ *
+ * @private
+ * @param {*} value The potential iteratee value argument.
+ * @param {*} index The potential iteratee index or key argument.
+ * @param {*} object The potential iteratee object argument.
+ * @returns {boolean} Returns `true` if the arguments are from an iteratee call, else `false`.
+ */
+function isIterateeCall(value, index, object) {
+  if (!isObject(object)) {
+    return false;
+  }
+  var type = typeof index;
+  if (type == 'number'
+      ? (isArrayLike(object) && isIndex(index, object.length))
+      : (type == 'string' && index in object)) {
+    var other = object[index];
+    return value === value ? (value === other) : (other !== other);
+  }
+  return false;
+}
+
+module.exports = isIterateeCall;
+
+},{"../lang/isObject":62,"./isArrayLike":48,"./isIndex":49}],51:[function(require,module,exports){
+var isArray = require('../lang/isArray'),
+    toObject = require('./toObject');
+
+/** Used to match property names within property paths. */
+var reIsDeepProp = /\.|\[(?:[^[\]]*|(["'])(?:(?!\1)[^\n\\]|\\.)*?\1)\]/,
+    reIsPlainProp = /^\w*$/;
+
+/**
+ * Checks if `value` is a property name and not a property path.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @param {Object} [object] The object to query keys on.
+ * @returns {boolean} Returns `true` if `value` is a property name, else `false`.
+ */
+function isKey(value, object) {
+  var type = typeof value;
+  if ((type == 'string' && reIsPlainProp.test(value)) || type == 'number') {
+    return true;
+  }
+  if (isArray(value)) {
+    return false;
+  }
+  var result = !reIsDeepProp.test(value);
+  return result || (object != null && value in toObject(object));
+}
+
+module.exports = isKey;
+
+},{"../lang/isArray":59,"./toObject":56}],52:[function(require,module,exports){
+/**
+ * Used as the [maximum length](http://ecma-international.org/ecma-262/6.0/#sec-number.max_safe_integer)
+ * of an array-like value.
+ */
+var MAX_SAFE_INTEGER = 9007199254740991;
+
+/**
+ * Checks if `value` is a valid array-like length.
+ *
+ * **Note:** This function is based on [`ToLength`](http://ecma-international.org/ecma-262/6.0/#sec-tolength).
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a valid length, else `false`.
+ */
+function isLength(value) {
+  return typeof value == 'number' && value > -1 && value % 1 == 0 && value <= MAX_SAFE_INTEGER;
+}
+
+module.exports = isLength;
+
+},{}],53:[function(require,module,exports){
+/**
+ * Checks if `value` is object-like.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is object-like, else `false`.
+ */
+function isObjectLike(value) {
+  return !!value && typeof value == 'object';
+}
+
+module.exports = isObjectLike;
+
+},{}],54:[function(require,module,exports){
+var isObject = require('../lang/isObject');
+
+/**
+ * Checks if `value` is suitable for strict equality comparisons, i.e. `===`.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` if suitable for strict
+ *  equality comparisons, else `false`.
+ */
+function isStrictComparable(value) {
+  return value === value && !isObject(value);
+}
+
+module.exports = isStrictComparable;
+
+},{"../lang/isObject":62}],55:[function(require,module,exports){
+var isArguments = require('../lang/isArguments'),
+    isArray = require('../lang/isArray'),
+    isIndex = require('./isIndex'),
+    isLength = require('./isLength'),
+    keysIn = require('../object/keysIn');
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/**
+ * A fallback implementation of `Object.keys` which creates an array of the
+ * own enumerable property names of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names.
+ */
+function shimKeys(object) {
+  var props = keysIn(object),
+      propsLength = props.length,
+      length = propsLength && object.length;
+
+  var allowIndexes = !!length && isLength(length) &&
+    (isArray(object) || isArguments(object));
+
+  var index = -1,
+      result = [];
+
+  while (++index < propsLength) {
+    var key = props[index];
+    if ((allowIndexes && isIndex(key, length)) || hasOwnProperty.call(object, key)) {
+      result.push(key);
+    }
+  }
+  return result;
+}
+
+module.exports = shimKeys;
+
+},{"../lang/isArguments":58,"../lang/isArray":59,"../object/keysIn":67,"./isIndex":49,"./isLength":52}],56:[function(require,module,exports){
+var isObject = require('../lang/isObject');
+
+/**
+ * Converts `value` to an object if it's not one.
+ *
+ * @private
+ * @param {*} value The value to process.
+ * @returns {Object} Returns the object.
+ */
+function toObject(value) {
+  return isObject(value) ? value : Object(value);
+}
+
+module.exports = toObject;
+
+},{"../lang/isObject":62}],57:[function(require,module,exports){
+var baseToString = require('./baseToString'),
+    isArray = require('../lang/isArray');
+
+/** Used to match property names within property paths. */
+var rePropName = /[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\n\\]|\\.)*?)\2)\]/g;
+
+/** Used to match backslashes in property paths. */
+var reEscapeChar = /\\(\\)?/g;
+
+/**
+ * Converts `value` to property path array if it's not one.
+ *
+ * @private
+ * @param {*} value The value to process.
+ * @returns {Array} Returns the property path array.
+ */
+function toPath(value) {
+  if (isArray(value)) {
+    return value;
+  }
+  var result = [];
+  baseToString(value).replace(rePropName, function(match, number, quote, string) {
+    result.push(quote ? string.replace(reEscapeChar, '$1') : (number || match));
+  });
+  return result;
+}
+
+module.exports = toPath;
+
+},{"../lang/isArray":59,"./baseToString":36}],58:[function(require,module,exports){
+var isArrayLike = require('../internal/isArrayLike'),
+    isObjectLike = require('../internal/isObjectLike');
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/** Native method references. */
+var propertyIsEnumerable = objectProto.propertyIsEnumerable;
+
+/**
+ * Checks if `value` is classified as an `arguments` object.
+ *
+ * @static
+ * @memberOf _
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is correctly classified, else `false`.
+ * @example
+ *
+ * _.isArguments(function() { return arguments; }());
+ * // => true
+ *
+ * _.isArguments([1, 2, 3]);
+ * // => false
+ */
+function isArguments(value) {
+  return isObjectLike(value) && isArrayLike(value) &&
+    hasOwnProperty.call(value, 'callee') && !propertyIsEnumerable.call(value, 'callee');
+}
+
+module.exports = isArguments;
+
+},{"../internal/isArrayLike":48,"../internal/isObjectLike":53}],59:[function(require,module,exports){
+var getNative = require('../internal/getNative'),
+    isLength = require('../internal/isLength'),
+    isObjectLike = require('../internal/isObjectLike');
+
+/** `Object#toString` result references. */
+var arrayTag = '[object Array]';
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/**
+ * Used to resolve the [`toStringTag`](http://ecma-international.org/ecma-262/6.0/#sec-object.prototype.tostring)
+ * of values.
+ */
+var objToString = objectProto.toString;
+
+/* Native method references for those with the same name as other `lodash` methods. */
+var nativeIsArray = getNative(Array, 'isArray');
+
+/**
+ * Checks if `value` is classified as an `Array` object.
+ *
+ * @static
+ * @memberOf _
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is correctly classified, else `false`.
+ * @example
+ *
+ * _.isArray([1, 2, 3]);
+ * // => true
+ *
+ * _.isArray(function() { return arguments; }());
+ * // => false
+ */
+var isArray = nativeIsArray || function(value) {
+  return isObjectLike(value) && isLength(value.length) && objToString.call(value) == arrayTag;
+};
+
+module.exports = isArray;
+
+},{"../internal/getNative":47,"../internal/isLength":52,"../internal/isObjectLike":53}],60:[function(require,module,exports){
+var isObject = require('./isObject');
+
+/** `Object#toString` result references. */
+var funcTag = '[object Function]';
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/**
+ * Used to resolve the [`toStringTag`](http://ecma-international.org/ecma-262/6.0/#sec-object.prototype.tostring)
+ * of values.
+ */
+var objToString = objectProto.toString;
+
+/**
+ * Checks if `value` is classified as a `Function` object.
+ *
+ * @static
+ * @memberOf _
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is correctly classified, else `false`.
+ * @example
+ *
+ * _.isFunction(_);
+ * // => true
+ *
+ * _.isFunction(/abc/);
+ * // => false
+ */
+function isFunction(value) {
+  // The use of `Object#toString` avoids issues with the `typeof` operator
+  // in older versions of Chrome and Safari which return 'function' for regexes
+  // and Safari 8 which returns 'object' for typed array constructors.
+  return isObject(value) && objToString.call(value) == funcTag;
+}
+
+module.exports = isFunction;
+
+},{"./isObject":62}],61:[function(require,module,exports){
+var isFunction = require('./isFunction'),
+    isObjectLike = require('../internal/isObjectLike');
+
+/** Used to detect host constructors (Safari > 5). */
+var reIsHostCtor = /^\[object .+?Constructor\]$/;
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/** Used to resolve the decompiled source of functions. */
+var fnToString = Function.prototype.toString;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/** Used to detect if a method is native. */
+var reIsNative = RegExp('^' +
+  fnToString.call(hasOwnProperty).replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+  .replace(/hasOwnProperty|(function).*?(?=\\\()| for .+?(?=\\\])/g, '$1.*?') + '$'
+);
+
+/**
+ * Checks if `value` is a native function.
+ *
+ * @static
+ * @memberOf _
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a native function, else `false`.
+ * @example
+ *
+ * _.isNative(Array.prototype.push);
+ * // => true
+ *
+ * _.isNative(_);
+ * // => false
+ */
+function isNative(value) {
+  if (value == null) {
+    return false;
+  }
+  if (isFunction(value)) {
+    return reIsNative.test(fnToString.call(value));
+  }
+  return isObjectLike(value) && reIsHostCtor.test(value);
+}
+
+module.exports = isNative;
+
+},{"../internal/isObjectLike":53,"./isFunction":60}],62:[function(require,module,exports){
+/**
+ * Checks if `value` is the [language type](https://es5.github.io/#x8) of `Object`.
+ * (e.g. arrays, functions, objects, regexes, `new Number(0)`, and `new String('')`)
+ *
+ * @static
+ * @memberOf _
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is an object, else `false`.
+ * @example
+ *
+ * _.isObject({});
+ * // => true
+ *
+ * _.isObject([1, 2, 3]);
+ * // => true
+ *
+ * _.isObject(1);
+ * // => false
+ */
+function isObject(value) {
+  // Avoid a V8 JIT bug in Chrome 19-20.
+  // See https://code.google.com/p/v8/issues/detail?id=2291 for more details.
+  var type = typeof value;
+  return !!value && (type == 'object' || type == 'function');
+}
+
+module.exports = isObject;
+
+},{}],63:[function(require,module,exports){
+var isLength = require('../internal/isLength'),
+    isObjectLike = require('../internal/isObjectLike');
+
+/** `Object#toString` result references. */
+var argsTag = '[object Arguments]',
+    arrayTag = '[object Array]',
+    boolTag = '[object Boolean]',
+    dateTag = '[object Date]',
+    errorTag = '[object Error]',
+    funcTag = '[object Function]',
+    mapTag = '[object Map]',
+    numberTag = '[object Number]',
+    objectTag = '[object Object]',
+    regexpTag = '[object RegExp]',
+    setTag = '[object Set]',
+    stringTag = '[object String]',
+    weakMapTag = '[object WeakMap]';
+
+var arrayBufferTag = '[object ArrayBuffer]',
+    float32Tag = '[object Float32Array]',
+    float64Tag = '[object Float64Array]',
+    int8Tag = '[object Int8Array]',
+    int16Tag = '[object Int16Array]',
+    int32Tag = '[object Int32Array]',
+    uint8Tag = '[object Uint8Array]',
+    uint8ClampedTag = '[object Uint8ClampedArray]',
+    uint16Tag = '[object Uint16Array]',
+    uint32Tag = '[object Uint32Array]';
+
+/** Used to identify `toStringTag` values of typed arrays. */
+var typedArrayTags = {};
+typedArrayTags[float32Tag] = typedArrayTags[float64Tag] =
+typedArrayTags[int8Tag] = typedArrayTags[int16Tag] =
+typedArrayTags[int32Tag] = typedArrayTags[uint8Tag] =
+typedArrayTags[uint8ClampedTag] = typedArrayTags[uint16Tag] =
+typedArrayTags[uint32Tag] = true;
+typedArrayTags[argsTag] = typedArrayTags[arrayTag] =
+typedArrayTags[arrayBufferTag] = typedArrayTags[boolTag] =
+typedArrayTags[dateTag] = typedArrayTags[errorTag] =
+typedArrayTags[funcTag] = typedArrayTags[mapTag] =
+typedArrayTags[numberTag] = typedArrayTags[objectTag] =
+typedArrayTags[regexpTag] = typedArrayTags[setTag] =
+typedArrayTags[stringTag] = typedArrayTags[weakMapTag] = false;
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/**
+ * Used to resolve the [`toStringTag`](http://ecma-international.org/ecma-262/6.0/#sec-object.prototype.tostring)
+ * of values.
+ */
+var objToString = objectProto.toString;
+
+/**
+ * Checks if `value` is classified as a typed array.
+ *
+ * @static
+ * @memberOf _
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is correctly classified, else `false`.
+ * @example
+ *
+ * _.isTypedArray(new Uint8Array);
+ * // => true
+ *
+ * _.isTypedArray([]);
+ * // => false
+ */
+function isTypedArray(value) {
+  return isObjectLike(value) && isLength(value.length) && !!typedArrayTags[objToString.call(value)];
+}
+
+module.exports = isTypedArray;
+
+},{"../internal/isLength":52,"../internal/isObjectLike":53}],64:[function(require,module,exports){
+var baseRandom = require('../internal/baseRandom'),
+    isIterateeCall = require('../internal/isIterateeCall');
+
+/* Native method references for those with the same name as other `lodash` methods. */
+var nativeMin = Math.min,
+    nativeRandom = Math.random;
+
+/**
+ * Produces a random number between `min` and `max` (inclusive). If only one
+ * argument is provided a number between `0` and the given number is returned.
+ * If `floating` is `true`, or either `min` or `max` are floats, a floating-point
+ * number is returned instead of an integer.
+ *
+ * @static
+ * @memberOf _
+ * @category Number
+ * @param {number} [min=0] The minimum possible value.
+ * @param {number} [max=1] The maximum possible value.
+ * @param {boolean} [floating] Specify returning a floating-point number.
+ * @returns {number} Returns the random number.
+ * @example
+ *
+ * _.random(0, 5);
+ * // => an integer between 0 and 5
+ *
+ * _.random(5);
+ * // => also an integer between 0 and 5
+ *
+ * _.random(5, true);
+ * // => a floating-point number between 0 and 5
+ *
+ * _.random(1.2, 5.2);
+ * // => a floating-point number between 1.2 and 5.2
+ */
+function random(min, max, floating) {
+  if (floating && isIterateeCall(min, max, floating)) {
+    max = floating = undefined;
+  }
+  var noMin = min == null,
+      noMax = max == null;
+
+  if (floating == null) {
+    if (noMax && typeof min == 'boolean') {
+      floating = min;
+      min = 1;
+    }
+    else if (typeof max == 'boolean') {
+      floating = max;
+      noMax = true;
+    }
+  }
+  if (noMin && noMax) {
+    max = 1;
+    noMax = false;
+  }
+  min = +min || 0;
+  if (noMax) {
+    max = min;
+    min = 0;
+  } else {
+    max = +max || 0;
+  }
+  if (floating || min % 1 || max % 1) {
+    var rand = nativeRandom();
+    return nativeMin(min + (rand * (max - min + parseFloat('1e-' + ((rand + '').length - 1)))), max);
+  }
+  return baseRandom(min, max);
+}
+
+module.exports = random;
+
+},{"../internal/baseRandom":34,"../internal/isIterateeCall":50}],65:[function(require,module,exports){
+var assignWith = require('../internal/assignWith'),
+    baseAssign = require('../internal/baseAssign'),
+    createAssigner = require('../internal/createAssigner');
+
+/**
+ * Assigns own enumerable properties of source object(s) to the destination
+ * object. Subsequent sources overwrite property assignments of previous sources.
+ * If `customizer` is provided it's invoked to produce the assigned values.
+ * The `customizer` is bound to `thisArg` and invoked with five arguments:
+ * (objectValue, sourceValue, key, object, source).
+ *
+ * **Note:** This method mutates `object` and is based on
+ * [`Object.assign`](http://ecma-international.org/ecma-262/6.0/#sec-object.assign).
+ *
+ * @static
+ * @memberOf _
+ * @alias extend
+ * @category Object
+ * @param {Object} object The destination object.
+ * @param {...Object} [sources] The source objects.
+ * @param {Function} [customizer] The function to customize assigned values.
+ * @param {*} [thisArg] The `this` binding of `customizer`.
+ * @returns {Object} Returns `object`.
+ * @example
+ *
+ * _.assign({ 'user': 'barney' }, { 'age': 40 }, { 'user': 'fred' });
+ * // => { 'user': 'fred', 'age': 40 }
+ *
+ * // using a customizer callback
+ * var defaults = _.partialRight(_.assign, function(value, other) {
+ *   return _.isUndefined(value) ? other : value;
+ * });
+ *
+ * defaults({ 'user': 'barney' }, { 'age': 36 }, { 'user': 'fred' });
+ * // => { 'user': 'barney', 'age': 36 }
+ */
+var assign = createAssigner(function(object, source, customizer) {
+  return customizer
+    ? assignWith(object, source, customizer)
+    : baseAssign(object, source);
+});
+
+module.exports = assign;
+
+},{"../internal/assignWith":15,"../internal/baseAssign":16,"../internal/createAssigner":38}],66:[function(require,module,exports){
+var getNative = require('../internal/getNative'),
+    isArrayLike = require('../internal/isArrayLike'),
+    isObject = require('../lang/isObject'),
+    shimKeys = require('../internal/shimKeys');
+
+/* Native method references for those with the same name as other `lodash` methods. */
+var nativeKeys = getNative(Object, 'keys');
+
+/**
+ * Creates an array of the own enumerable property names of `object`.
+ *
+ * **Note:** Non-object values are coerced to objects. See the
+ * [ES spec](http://ecma-international.org/ecma-262/6.0/#sec-object.keys)
+ * for more details.
+ *
+ * @static
+ * @memberOf _
+ * @category Object
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names.
+ * @example
+ *
+ * function Foo() {
+ *   this.a = 1;
+ *   this.b = 2;
+ * }
+ *
+ * Foo.prototype.c = 3;
+ *
+ * _.keys(new Foo);
+ * // => ['a', 'b'] (iteration order is not guaranteed)
+ *
+ * _.keys('hi');
+ * // => ['0', '1']
+ */
+var keys = !nativeKeys ? shimKeys : function(object) {
+  var Ctor = object == null ? undefined : object.constructor;
+  if ((typeof Ctor == 'function' && Ctor.prototype === object) ||
+      (typeof object != 'function' && isArrayLike(object))) {
+    return shimKeys(object);
+  }
+  return isObject(object) ? nativeKeys(object) : [];
+};
+
+module.exports = keys;
+
+},{"../internal/getNative":47,"../internal/isArrayLike":48,"../internal/shimKeys":55,"../lang/isObject":62}],67:[function(require,module,exports){
+var isArguments = require('../lang/isArguments'),
+    isArray = require('../lang/isArray'),
+    isIndex = require('../internal/isIndex'),
+    isLength = require('../internal/isLength'),
+    isObject = require('../lang/isObject');
+
+/** Used for native method references. */
+var objectProto = Object.prototype;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/**
+ * Creates an array of the own and inherited enumerable property names of `object`.
+ *
+ * **Note:** Non-object values are coerced to objects.
+ *
+ * @static
+ * @memberOf _
+ * @category Object
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names.
+ * @example
+ *
+ * function Foo() {
+ *   this.a = 1;
+ *   this.b = 2;
+ * }
+ *
+ * Foo.prototype.c = 3;
+ *
+ * _.keysIn(new Foo);
+ * // => ['a', 'b', 'c'] (iteration order is not guaranteed)
+ */
+function keysIn(object) {
+  if (object == null) {
+    return [];
+  }
+  if (!isObject(object)) {
+    object = Object(object);
+  }
+  var length = object.length;
+  length = (length && isLength(length) &&
+    (isArray(object) || isArguments(object)) && length) || 0;
+
+  var Ctor = object.constructor,
+      index = -1,
+      isProto = typeof Ctor == 'function' && Ctor.prototype === object,
+      result = Array(length),
+      skipIndexes = length > 0;
+
+  while (++index < length) {
+    result[index] = (index + '');
+  }
+  for (var key in object) {
+    if (!(skipIndexes && isIndex(key, length)) &&
+        !(key == 'constructor' && (isProto || !hasOwnProperty.call(object, key)))) {
+      result.push(key);
+    }
+  }
+  return result;
+}
+
+module.exports = keysIn;
+
+},{"../internal/isIndex":49,"../internal/isLength":52,"../lang/isArguments":58,"../lang/isArray":59,"../lang/isObject":62}],68:[function(require,module,exports){
+var keys = require('./keys'),
+    toObject = require('../internal/toObject');
+
+/**
+ * Creates a two dimensional array of the key-value pairs for `object`,
+ * e.g. `[[key1, value1], [key2, value2]]`.
+ *
+ * @static
+ * @memberOf _
+ * @category Object
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the new array of key-value pairs.
+ * @example
+ *
+ * _.pairs({ 'barney': 36, 'fred': 40 });
+ * // => [['barney', 36], ['fred', 40]] (iteration order is not guaranteed)
+ */
+function pairs(object) {
+  object = toObject(object);
+
+  var index = -1,
+      props = keys(object),
+      length = props.length,
+      result = Array(length);
+
+  while (++index < length) {
+    var key = props[index];
+    result[index] = [key, object[key]];
+  }
+  return result;
+}
+
+module.exports = pairs;
+
+},{"../internal/toObject":56,"./keys":66}],69:[function(require,module,exports){
+/**
+ * This method returns the first argument provided to it.
+ *
+ * @static
+ * @memberOf _
+ * @category Utility
+ * @param {*} value Any value.
+ * @returns {*} Returns `value`.
+ * @example
+ *
+ * var object = { 'user': 'fred' };
+ *
+ * _.identity(object) === object;
+ * // => true
+ */
+function identity(value) {
+  return value;
+}
+
+module.exports = identity;
+
+},{}],70:[function(require,module,exports){
+var baseProperty = require('../internal/baseProperty'),
+    basePropertyDeep = require('../internal/basePropertyDeep'),
+    isKey = require('../internal/isKey');
+
+/**
+ * Creates a function that returns the property value at `path` on a
+ * given object.
+ *
+ * @static
+ * @memberOf _
+ * @category Utility
+ * @param {Array|string} path The path of the property to get.
+ * @returns {Function} Returns the new function.
+ * @example
+ *
+ * var objects = [
+ *   { 'a': { 'b': { 'c': 2 } } },
+ *   { 'a': { 'b': { 'c': 1 } } }
+ * ];
+ *
+ * _.map(objects, _.property('a.b.c'));
+ * // => [2, 1]
+ *
+ * _.pluck(_.sortBy(objects, _.property(['a', 'b', 'c'])), 'a.b.c');
+ * // => [1, 2]
+ */
+function property(path) {
+  return isKey(path) ? baseProperty(path) : basePropertyDeep(path);
+}
+
+module.exports = property;
+
+},{"../internal/baseProperty":31,"../internal/basePropertyDeep":32,"../internal/isKey":51}],71:[function(require,module,exports){
+var now = require('performance-now')
+  , global = typeof window === 'undefined' ? {} : window
+  , vendors = ['moz', 'webkit']
+  , suffix = 'AnimationFrame'
+  , raf = global['request' + suffix]
+  , caf = global['cancel' + suffix] || global['cancelRequest' + suffix]
+
+for(var i = 0; i < vendors.length && !raf; i++) {
+  raf = global[vendors[i] + 'Request' + suffix]
+  caf = global[vendors[i] + 'Cancel' + suffix]
+      || global[vendors[i] + 'CancelRequest' + suffix]
+}
+
+// Some versions of FF have rAF but not cAF
+if(!raf || !caf) {
+  var last = 0
+    , id = 0
+    , queue = []
+    , frameDuration = 1000 / 60
+
+  raf = function(callback) {
+    if(queue.length === 0) {
+      var _now = now()
+        , next = Math.max(0, frameDuration - (_now - last))
+      last = next + _now
+      setTimeout(function() {
+        var cp = queue.slice(0)
+        // Clear queue here to prevent
+        // callbacks from appending listeners
+        // to the current frame's queue
+        queue.length = 0
+        for(var i = 0; i < cp.length; i++) {
+          if(!cp[i].cancelled) {
+            try{
+              cp[i].callback(last)
+            } catch(e) {
+              setTimeout(function() { throw e }, 0)
+            }
+          }
+        }
+      }, Math.round(next))
+    }
+    queue.push({
+      handle: ++id,
+      callback: callback,
+      cancelled: false
+    })
+    return id
+  }
+
+  caf = function(handle) {
+    for(var i = 0; i < queue.length; i++) {
+      if(queue[i].handle === handle) {
+        queue[i].cancelled = true
+      }
+    }
+  }
+}
+
+module.exports = function(fn) {
+  // Wrap in a new function to prevent
+  // `cancel` potentially being assigned
+  // to the native rAF function
+  return raf.call(global, fn)
+}
+module.exports.cancel = function() {
+  caf.apply(global, arguments)
+}
+
+},{"performance-now":72}],72:[function(require,module,exports){
+(function (process){
+// Generated by CoffeeScript 1.7.1
+(function() {
+  var getNanoSeconds, hrtime, loadTime;
+
+  if ((typeof performance !== "undefined" && performance !== null) && performance.now) {
+    module.exports = function() {
+      return performance.now();
+    };
+  } else if ((typeof process !== "undefined" && process !== null) && process.hrtime) {
+    module.exports = function() {
+      return (getNanoSeconds() - loadTime) / 1e6;
+    };
+    hrtime = process.hrtime;
+    getNanoSeconds = function() {
+      var hr;
+      hr = hrtime();
+      return hr[0] * 1e9 + hr[1];
+    };
+    loadTime = getNanoSeconds();
+  } else if (Date.now) {
+    module.exports = function() {
+      return Date.now() - loadTime;
+    };
+    loadTime = Date.now();
+  } else {
+    module.exports = function() {
+      return new Date().getTime() - loadTime;
+    };
+    loadTime = new Date().getTime();
+  }
+
+}).call(this);
+
+}).call(this,require("1YiZ5S"))
+},{"1YiZ5S":1}],73:[function(require,module,exports){
 (function (process){
 // Rebound
 // =======
@@ -2544,13 +5762,13 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
 // ------
 // [Rebound](http://facebook.github.io/rebound) was originally written
 // in Java to provide a lightweight physics system for
-// [Facebook Home](https://play.google.com/store/apps/details?id=com.facebook.home)
-// and [Chat Heads](https://play.google.com/store/apps/details?id=com.facebook.orca)
+// [Home](https://play.google.com/store/apps/details?id=com.facebook.home) and
+// [Chat Heads](https://play.google.com/store/apps/details?id=com.facebook.orca)
 // on Android. It's now been adopted by several other Android
 // applications. This JavaScript port was written to provide a quick
 // way to demonstrate Rebound animations on the web for a
-// [conference talk](https://www.youtube.com/watch?v=s5kNm-DgyjY). Since then the
-// JavaScript version has been used to build some really nice interfaces.
+// [conference talk](https://www.youtube.com/watch?v=s5kNm-DgyjY). Since then
+// the JavaScript version has been used to build some really nice interfaces.
 // Check out [brandonwalkin.com](http://brandonwalkin.com) for an
 // example.
 //
@@ -2572,7 +5790,10 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
 // will cause it to scale up and down with a springy animation.
 //
 // <div style="text-align:center; margin-bottom:50px; margin-top:50px">
-//   <img src="http://facebook.github.io/rebound/images/rebound.png" id="logo" />
+//   <img
+//     src="http://facebook.github.io/rebound/images/rebound.png"
+//     id="logo"
+//   />
 // </div>
 // <script src="../rebound.min.js"></script>
 // <script>
@@ -2663,7 +5884,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
 
   // Bind a function to a context object.
   util.bind = function bind(func, context) {
-    args = slice.call(arguments, 2);
+    var args = slice.call(arguments, 2);
     return function() {
       func.apply(context, concat.call(args, slice.call(arguments)));
     };
@@ -2712,23 +5933,44 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
     // SimulationLooper, and SteppingSimulationLooper. AnimationLooper is
     // the default as it is the most useful for common UI animations.
     setLooper: function(looper) {
-      this.looper = looper
+      this.looper = looper;
       looper.springSystem = this;
     },
 
-    // Create and register a new spring with the SpringSystem. This
-    // Spring will now be solved for during the physics iteration loop. By default
-    // the spring will use the default Origami spring config with 40 tension and 7
-    // friction, but you can also provide your own values here.
+    // Add a new spring to this SpringSystem. This Spring will now be solved for
+    // during the physics iteration loop. By default the spring will use the
+    // default Origami spring config with 40 tension and 7 friction, but you can
+    // also provide your own values here.
     createSpring: function(tension, friction) {
+      var springConfig;
+      if (tension === undefined || friction === undefined) {
+        springConfig = SpringConfig.DEFAULT_ORIGAMI_SPRING_CONFIG;
+      } else {
+        springConfig =
+          SpringConfig.fromOrigamiTensionAndFriction(tension, friction);
+      }
+      return this.createSpringWithConfig(springConfig);
+    },
+
+    // Add a spring with a specified bounciness and speed. To replicate Origami
+    // compositions based on PopAnimation patches, use this factory method to
+    // create matching springs.
+    createSpringWithBouncinessAndSpeed: function(bounciness, speed) {
+      var springConfig;
+      if (bounciness === undefined || speed === undefined) {
+        springConfig = SpringConfig.DEFAULT_ORIGAMI_SPRING_CONFIG;
+      } else {
+        springConfig =
+          SpringConfig.fromBouncinessAndSpeed(bounciness, speed);
+      }
+      return this.createSpringWithConfig(springConfig);
+    },
+
+    // Add a spring with the provided SpringConfig.
+    createSpringWithConfig: function(springConfig) {
       var spring = new Spring(this);
       this.registerSpring(spring);
-      if (typeof tension === 'undefined' || typeof friction === 'undefined') {
-        spring.setSpringConfig(SpringConfig.DEFAULT_ORIGAMI_SPRING_CONFIG);
-      } else {
-        var springConfig = SpringConfig.fromOrigamiTensionAndFriction(tension, friction);
-        spring.setSpringConfig(springConfig);
-      }
+      spring.setSpringConfig(springConfig);
       return spring;
     },
 
@@ -2815,7 +6057,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
 
       var i = 0, len = this.listeners.length;
       for (i = 0; i < len; i++) {
-        var listener = this.listeners[i];
+        listener = this.listeners[i];
         listener.onBeforeIntegrate && listener.onBeforeIntegrate(this);
       }
 
@@ -2826,7 +6068,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
       }
 
       for (i = 0; i < len; i++) {
-        var listener = this.listeners[i];
+        listener = this.listeners[i];
         listener.onAfterIntegrate && listener.onAfterIntegrate(this);
       }
 
@@ -2873,10 +6115,10 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
   // **Spring** provides a model of a classical spring acting to
   // resolve a body to equilibrium. Springs have configurable
   // tension which is a force multipler on the displacement of the
-  // spring from its rest point or `endValue` as defined by [Hooke’s
+  // spring from its rest point or `endValue` as defined by [Hooke's
   // law](http://en.wikipedia.org/wiki/Hooke's_law). Springs also have
   // configurable friction, which ensures that they do not oscillate
-  // infinitely. When a Spring is displaced by updating it’s resting
+  // infinitely. When a Spring is displaced by updating it's resting
   // or `currentValue`, the SpringSystems that contain that Spring
   // will automatically start looping to solve for equilibrium. As each
   // timestep passes, `SpringListener` objects attached to the Spring
@@ -3005,7 +6247,8 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
       return this._currentState.position;
     },
 
-    // Get the absolute distance of the Spring from it’s resting endValue position.
+    // Get the absolute distance of the Spring from it's resting endValue
+    // position.
     getCurrentDisplacementDistance: function() {
       return this.getDisplacementDistanceForState(this._currentState);
     },
@@ -3029,7 +6272,8 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
       this._springSystem.activateSpring(this.getId());
       for (var i = 0, len = this.listeners.length; i < len; i++) {
         var listener = this.listeners[i];
-        listener.onSpringEndStateChange && listener.onSpringEndStateChange(this);
+        var onChange = listener.onSpringEndStateChange;
+        onChange && onChange(this);
       }
       return this;
     },
@@ -3103,9 +6347,11 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
     // the direction it was moving in when it started to the current
     // position and end value.
     isOvershooting: function() {
+      var start = this._startValue;
+      var end = this._endValue;
       return this._springConfig.tension > 0 &&
-             ((this._startValue < this._endValue && this.getCurrentValue() > this._endValue) ||
-             (this._startValue > this._endValue && this.getCurrentValue() < this._endValue));
+       ((start < end && this.getCurrentValue() > end) ||
+       (start > end && this.getCurrentValue() < end));
     },
 
     // Spring.advance is the main solver method for the Spring. It takes
@@ -3152,26 +6398,35 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
         }
 
         aVelocity = velocity;
-        aAcceleration = (tension * (this._endValue - tempPosition)) - friction * velocity;
+        aAcceleration =
+          (tension * (this._endValue - tempPosition)) - friction * velocity;
 
         tempPosition = position + aVelocity * Spring.SOLVER_TIMESTEP_SEC * 0.5;
-        tempVelocity = velocity + aAcceleration * Spring.SOLVER_TIMESTEP_SEC * 0.5;
+        tempVelocity =
+          velocity + aAcceleration * Spring.SOLVER_TIMESTEP_SEC * 0.5;
         bVelocity = tempVelocity;
-        bAcceleration = (tension * (this._endValue - tempPosition)) - friction * tempVelocity;
+        bAcceleration =
+          (tension * (this._endValue - tempPosition)) - friction * tempVelocity;
 
         tempPosition = position + bVelocity * Spring.SOLVER_TIMESTEP_SEC * 0.5;
-        tempVelocity = velocity + bAcceleration * Spring.SOLVER_TIMESTEP_SEC * 0.5;
+        tempVelocity =
+          velocity + bAcceleration * Spring.SOLVER_TIMESTEP_SEC * 0.5;
         cVelocity = tempVelocity;
-        cAcceleration = (tension * (this._endValue - tempPosition)) - friction * tempVelocity;
+        cAcceleration =
+          (tension * (this._endValue - tempPosition)) - friction * tempVelocity;
 
         tempPosition = position + cVelocity * Spring.SOLVER_TIMESTEP_SEC * 0.5;
-        tempVelocity = velocity + cAcceleration * Spring.SOLVER_TIMESTEP_SEC * 0.5;
+        tempVelocity =
+          velocity + cAcceleration * Spring.SOLVER_TIMESTEP_SEC * 0.5;
         dVelocity = tempVelocity;
-        dAcceleration = (tension * (this._endValue - tempPosition)) - friction * tempVelocity;
+        dAcceleration =
+          (tension * (this._endValue - tempPosition)) - friction * tempVelocity;
 
-        dxdt = 1.0/6.0 * (aVelocity + 2.0 * (bVelocity + cVelocity) + dVelocity);
-        dvdt = 1.0/6.0 *
-          (aAcceleration + 2.0 * (bAcceleration + cAcceleration) + dAcceleration);
+        dxdt =
+          1.0/6.0 * (aVelocity + 2.0 * (bVelocity + cVelocity) + dVelocity);
+        dvdt = 1.0/6.0 * (
+          aAcceleration + 2.0 * (bAcceleration + cAcceleration) + dAcceleration
+        );
 
         position += dxdt * Spring.SOLVER_TIMESTEP_SEC;
         velocity += dvdt * Spring.SOLVER_TIMESTEP_SEC;
@@ -3184,7 +6439,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
       this._currentState.velocity = velocity;
 
       if (this._timeAccumulator > 0) {
-        this.interpolate(this._timeAccumulator / Spring.SOLVER_TIMESTEP_SEC);
+        this._interpolate(this._timeAccumulator / Spring.SOLVER_TIMESTEP_SEC);
       }
 
       if (this.isAtRest() ||
@@ -3246,7 +6501,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
       return this._wasAtRest;
     },
 
-    // Check if the Spring is atRest meaning that it’s currentValue and
+    // Check if the Spring is atRest meaning that it's currentValue and
     // endValue are the same and that it has no velocity. The previously
     // described thresholds for speed and displacement define the bounds
     // of this equivalence check. If the Spring has 0 tension, then it will
@@ -3254,7 +6509,8 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
     // restSpeedThreshold.
     isAtRest: function() {
       return Math.abs(this._currentState.velocity) < this._restSpeedThreshold &&
-        (this.getDisplacementDistanceForState(this._currentState) <= this._displacementFromRestThreshold ||
+        (this.getDisplacementDistanceForState(this._currentState) <=
+          this._displacementFromRestThreshold ||
         this._springConfig.tension === 0);
     },
 
@@ -3269,7 +6525,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
       return this;
     },
 
-    interpolate: function(alpha) {
+    _interpolate: function(alpha) {
       this._currentState.position = this._currentState.position *
         alpha + this._previousState.position * (1 - alpha);
       this._currentState.velocity = this._currentState.velocity *
@@ -3328,9 +6584,9 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
 
   // Loopers
   // -------
-  // **AnimationLooper** plays each frame of the SpringSystem on animation timing loop.
-  // This is the default type of looper for a new spring system as it is the most common
-  // when developing UI.
+  // **AnimationLooper** plays each frame of the SpringSystem on animation
+  // timing loop. This is the default type of looper for a new spring system
+  // as it is the most common when developing UI.
   var AnimationLooper = rebound.AnimationLooper = function AnimationLooper() {
     this.springSystem = null;
     var _this = this;
@@ -3340,16 +6596,16 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
 
     this.run = function() {
       util.onFrame(_run);
-    }
+    };
   };
 
   // **SimulationLooper** resolves the SpringSystem to a resting state in a
-  // tight and blocking loop. This is useful for synchronously generating pre-recorded
-  // animations that can then be played on a timing loop later. Sometimes this lead to
-  // better performance to pre-record a single spring curve and use it to drive many
-  // animations; however, it can make dynamic response to user input a bit trickier to
-  // implement.
-  var SimulationLooper = rebound.SimulationLooper = function SimulationLooper(timestep) {
+  // tight and blocking loop. This is useful for synchronously generating
+  // pre-recorded animations that can then be played on a timing loop later.
+  // Sometimes this lead to better performance to pre-record a single spring
+  // curve and use it to drive many animations; however, it can make dynamic
+  // response to user input a bit trickier to implement.
+  rebound.SimulationLooper = function SimulationLooper(timestep) {
     this.springSystem = null;
     var time = 0;
     var running = false;
@@ -3364,25 +6620,26 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
         this.springSystem.loop(time+=timestep);
       }
       running = false;
-    }
+    };
   };
 
-  // **SteppingSimulationLooper** resolves the SpringSystem one step at a time controlled
-  // by an outside loop. This is useful for testing and verifying the behavior of a SpringSystem
-  // or if you want to control your own timing loop for some reason e.g. slowing down or speeding
-  // up the simulation.
-  var SteppingSimulationLooper = rebound.SteppingSimulationLooper = function(timestep) {
+  // **SteppingSimulationLooper** resolves the SpringSystem one step at a
+  // time controlled by an outside loop. This is useful for testing and
+  // verifying the behavior of a SpringSystem or if you want to control your own
+  // timing loop for some reason e.g. slowing down or speeding up the
+  // simulation.
+  rebound.SteppingSimulationLooper = function(timestep) {
     this.springSystem = null;
     var time = 0;
-    var running = false;
 
-    // this.run is NOOP'd here to allow control from the outside using this.step.
+    // this.run is NOOP'd here to allow control from the outside using
+    // this.step.
     this.run = function(){};
 
     // Perform one step toward resolving the SpringSystem.
     this.step = function(timestep) {
       this.springSystem.loop(time+=timestep);
-    }
+    };
   };
 
   // Math for converting from
@@ -3408,6 +6665,72 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
     }
   };
 
+  // BouncyConversion provides math for converting from Origami PopAnimation
+  // config values to regular Origami tension and friction values. If you are
+  // trying to replicate prototypes made with PopAnimation patches in Origami,
+  // then you should create your springs with
+  // SpringSystem.createSpringWithBouncinessAndSpeed, which uses this Math
+  // internally to create a spring to match the provided PopAnimation
+  // configuration from Origami.
+  var BouncyConversion = rebound.BouncyConversion = function(bounciness, speed){
+    this.bounciness = bounciness;
+    this.speed = speed;
+    var b = this.normalize(bounciness / 1.7, 0, 20.0);
+    b = this.projectNormal(b, 0.0, 0.8);
+    var s = this.normalize(speed / 1.7, 0, 20.0);
+    this.bouncyTension = this.projectNormal(s, 0.5, 200)
+    this.bouncyFriction = this.quadraticOutInterpolation(
+      b,
+      this.b3Nobounce(this.bouncyTension),
+      0.01);
+  }
+
+  util.extend(BouncyConversion.prototype, {
+
+    normalize: function(value, startValue, endValue) {
+      return (value - startValue) / (endValue - startValue);
+    },
+
+    projectNormal: function(n, start, end) {
+      return start + (n * (end - start));
+    },
+
+    linearInterpolation: function(t, start, end) {
+      return t * end + (1.0 - t) * start;
+    },
+
+    quadraticOutInterpolation: function(t, start, end) {
+      return this.linearInterpolation(2*t - t*t, start, end);
+    },
+
+    b3Friction1: function(x) {
+      return (0.0007 * Math.pow(x, 3)) -
+        (0.031 * Math.pow(x, 2)) + 0.64 * x + 1.28;
+    },
+
+    b3Friction2: function(x) {
+      return (0.000044 * Math.pow(x, 3)) -
+        (0.006 * Math.pow(x, 2)) + 0.36 * x + 2.;
+    },
+
+    b3Friction3: function(x) {
+      return (0.00000045 * Math.pow(x, 3)) -
+        (0.000332 * Math.pow(x, 2)) + 0.1078 * x + 5.84;
+    },
+
+    b3Nobounce: function(tension) {
+      var friction = 0;
+      if (tension <= 18) {
+        friction = this.b3Friction1(tension);
+      } else if (tension > 18 && tension <= 44) {
+        friction = this.b3Friction2(tension);
+      } else {
+        friction = this.b3Friction3(tension);
+      }
+      return friction;
+    }
+  });
+
   util.extend(SpringConfig, {
     // Convert an origami Spring tension and friction to Rebound spring
     // constants. If you are prototyping a design with Origami, this
@@ -3419,19 +6742,34 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
         OrigamiValueConverter.frictionFromOrigamiValue(friction));
     },
 
-    // Create a SpringConfig with no tension or a coasting spring with some amount
-    // of Friction so that it does not coast infininitely.
+    // Convert an origami PopAnimation Spring bounciness and speed to Rebound
+    // spring constants. If you are using PopAnimation patches in Origami, this
+    // utility will provide springs that match your prototype.
+    fromBouncinessAndSpeed: function(bounciness, speed) {
+      var bouncyConversion = new rebound.BouncyConversion(bounciness, speed);
+      return this.fromOrigamiTensionAndFriction(
+        bouncyConversion.bouncyTension,
+        bouncyConversion.bouncyFriction);
+    },
+
+    // Create a SpringConfig with no tension or a coasting spring with some
+    // amount of Friction so that it does not coast infininitely.
     coastingConfigWithOrigamiFriction: function(friction) {
-      return new SpringConfig(0, OrigamiValueConverter.frictionFromOrigamiValue(friction));
+      return new SpringConfig(
+        0,
+        OrigamiValueConverter.frictionFromOrigamiValue(friction)
+      );
     }
   });
 
-  SpringConfig.DEFAULT_ORIGAMI_SPRING_CONFIG = SpringConfig.fromOrigamiTensionAndFriction(40, 7);
+  SpringConfig.DEFAULT_ORIGAMI_SPRING_CONFIG =
+    SpringConfig.fromOrigamiTensionAndFriction(40, 7);
 
   util.extend(SpringConfig.prototype, {friction: 0, tension: 0});
 
   // Here are a couple of function to convert colors between hex codes and RGB
-  // component values. These are handy when performing color tweening animations.
+  // component values. These are handy when performing color
+  // tweening animations.
   var colorCache = {};
   util.hexToRGB = function(color) {
     if (colorCache[color]) {
@@ -3443,14 +6781,14 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
     }
     var parts = color.match(/.{2}/g);
 
-    var color = {
+    var ret = {
       r: parseInt(parts[0], 16),
       g: parseInt(parts[1], 16),
       b: parseInt(parts[2], 16)
     };
 
-    colorCache[color] = color;
-    return color;
+    colorCache[color] = ret;
+    return ret;
   };
 
   util.rgbToHex = function(r, g, b) {
@@ -3479,17 +6817,24 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
       return toLow + (valueScale * toRangeSize);
     },
 
-    // Interpolate two hex colors in a 0 - 1 range or optionally provide a custom range
-    // with fromLow,fromHight. The output will be in hex by default unless asRGB is true
-    // in which case it will be returned as an rgb string.
-    interpolateColor: function(val, startColor, endColor, fromLow, fromHigh, asRGB) {
-      fromLow = typeof fromLow === 'undefined' ? 0 : fromLow;
-      fromHigh = typeof fromHigh === 'undefined' ? 1 : fromHigh;
-      var startColor = util.hexToRGB(startColor);
-      var endColor = util.hexToRGB(endColor);
-      var r = Math.floor(util.mapValueInRange(val, fromLow, fromHigh, startColor.r, endColor.r));
-      var g = Math.floor(util.mapValueInRange(val, fromLow, fromHigh, startColor.g, endColor.g));
-      var b = Math.floor(util.mapValueInRange(val, fromLow, fromHigh, startColor.b, endColor.b));
+    // Interpolate two hex colors in a 0 - 1 range or optionally provide a
+    // custom range with fromLow,fromHight. The output will be in hex by default
+    // unless asRGB is true in which case it will be returned as an rgb string.
+    interpolateColor:
+      function(val, startColor, endColor, fromLow, fromHigh, asRGB) {
+      fromLow = fromLow === undefined ? 0 : fromLow;
+      fromHigh = fromHigh === undefined ? 1 : fromHigh;
+      startColor = util.hexToRGB(startColor);
+      endColor = util.hexToRGB(endColor);
+      var r = Math.floor(
+        util.mapValueInRange(val, fromLow, fromHigh, startColor.r, endColor.r)
+      );
+      var g = Math.floor(
+        util.mapValueInRange(val, fromLow, fromHigh, startColor.g, endColor.g)
+      );
+      var b = Math.floor(
+        util.mapValueInRange(val, fromLow, fromHigh, startColor.b, endColor.b)
+      );
       if (asRGB) {
         return 'rgb(' + r + ',' + g + ',' + b + ')';
       } else {
@@ -3526,7 +6871,10 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
       window.webkitRequestAnimationFrame ||
       window.mozRequestAnimationFrame ||
       window.msRequestAnimationFrame ||
-      window.oRequestAnimationFrame;
+      window.oRequestAnimationFrame ||
+      function(callback) {
+        window.setTimeout(callback, 1000 / 60);
+      };
   }
   if (!_onFrame && typeof process !== 'undefined' && process.title === 'node') {
     _onFrame = setImmediate;
@@ -3535,7 +6883,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
   // Cross browser/node timer functions.
   util.onFrame = function onFrame(func) {
     return _onFrame(func);
-  }
+  };
 
   // Export the public api using exports for common js or the window for
   // normal browser inclusion.
@@ -3545,6 +6893,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
     window.rebound = rebound;
   }
 })();
+
 
 // Legal Stuff
 // -----------
@@ -3558,7 +6907,7 @@ if (typeof define == TYPE_FUNCTION && define.amd) {
  */
 
 }).call(this,require("1YiZ5S"))
-},{"1YiZ5S":1}],4:[function(require,module,exports){
+},{"1YiZ5S":1}],74:[function(require,module,exports){
 (function (global){
 /**
 * @link https://github.com/gajus/sister for the canonical source repository
@@ -3569,19 +6918,32 @@ function Sister () {
         events = {};
 
     /**
-     * @name listener
+     * @name handler
      * @function
      * @param {Object} data Event data.
      */
 
     /**
      * @param {String} name Event name.
-     * @param {listener} listener
+     * @param {handler} handler
+     * @return {listener}
      */
-    sister.on = function (name, listener) {
+    sister.on = function (name, handler) {
+        var listener = {name: name, handler: handler};
         events[name] = events[name] || [];
         events[name].unshift(listener);
-        return this;
+        return listener;
+    };
+
+    /**
+     * @param {listener}
+     */
+    sister.off = function (listener) {
+        var index = events[listener.name].indexOf(listener);
+
+        if (index != -1) {
+            events[listener.name].splice(index, 1);
+        }
     };
 
     /**
@@ -3595,7 +6957,7 @@ function Sister () {
         if (listeners) {
             i = listeners.length;
             while (i--) {
-                listeners[i](data);
+                listeners[i].handler(data);
             }
         }
     };
@@ -3608,7 +6970,7 @@ global.gajus.Sister = Sister;
 
 module.exports = Sister;
 }).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],5:[function(require,module,exports){
+},{}],75:[function(require,module,exports){
 'use strict';
 
 var style = document.createElement('p').style,
@@ -3658,424 +7020,36 @@ function dashedPrefix(key){
 module.exports = get;
 module.exports.dash = dashedPrefix;
 
-},{}],6:[function(require,module,exports){
-var Card,
-    Sister = require('sister'),
-    Hammer = require('hammerjs'),
-    rebound = require('rebound'),
-    vendorPrefix = require('vendor-prefix'),
-    util = {};
-
-/**
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random
- */
-util.randomInt = function (min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-};
-
-/**
- * @param {Stack} stack
- * @param {HTMLElement} targetElement
- */
-Card = function (stack, targetElement) {
-    var card = {},
-        config = Card.config(stack.config()),
-        targetElementWidth = targetElement.offsetWidth,
-        targetElementHeight = targetElement.offsetHeight,
-        eventEmitter = Sister(),
-        springSystem = stack.springSystem(),
-        springSnapBack = springSystem.createSpring(250, 10),
-        springThrowOut = springSystem.createSpring(500, 20),
-        lastThrow = {},
-        lastTranslate = {x: 0, y: 0},
-        throwOutDistance,
-        onSpringUpdate,
-        throwWhere;
-
-    throwOutDistance = config.throwOutDistance(config.minThrowOutDistance, config.maxThrowOutDistance);
-
-    mc = new Hammer.Manager(targetElement, {
-        recognizers: [
-            [Hammer.Pan, {threshold: 2}]
-        ]
-    });
-
-    Card.appendToParent(targetElement);
-
-    targetElement.addEventListener('mousedown', function () {
-        Card.appendToParent(targetElement);
-
-        eventEmitter.trigger('dragstart', {
-            target: targetElement
-        });
-    });
-
-    mc.on('panmove', function (e) {
-        var x = lastTranslate.x + e.deltaX,
-            y = lastTranslate.y + e.deltaY,
-            r = config.rotation(x, y, targetElementWidth, targetElementHeight, config.maxRotation);
-
-        Card.transform(targetElement, x, y, r);
-
-        eventEmitter.trigger('dragmove', {
-            target: targetElement,
-            throwOutConfidence: Card.throwOutConfidence(x, targetElementWidth),
-            throwDirection: x < 0 ? Card.DIRECTION_LEFT : Card.DIRECTION_RIGHT
-        });
-    });
-
-    mc.on('panend', function(e) {
-        var x = lastTranslate.x + e.deltaX,
-            y = lastTranslate.y + e.deltaY;
-
-        if (config.isThrowOut(x, targetElementWidth)) {
-            card.throwOut(x, y);
-        } else {
-            card.throwIn(x, y);
-        }
-
-        eventEmitter.trigger('dragend', {
-            target: targetElement
-        });
-    });
-
-    springSnapBack.addListener({
-        onSpringUpdate: function (spring) {
-            var value = spring.getCurrentValue(),
-                x = rebound.MathUtil.mapValueInRange(value, 0, 1, lastThrow.fromX, 0),
-                y = rebound.MathUtil.mapValueInRange(value, 0, 1, lastThrow.fromY, 0);
-
-            onSpringUpdate(x, y);
-        }
-    });
-
-    springThrowOut.addListener({
-        onSpringUpdate: function (spring) {
-            var value = spring.getCurrentValue(),
-                x = rebound.MathUtil.mapValueInRange(value, 0, 1, lastThrow.fromX, throwOutDistance * lastThrow.direction),
-                y = lastThrow.fromY;
-
-            onSpringUpdate(x, y);            
-        }
-    });
-
-    /**
-     * Invoked every time the physics solver updates the Spring's value.
-     *
-     * @param {Number} x
-     * @param {Number} y
-     */
-    onSpringUpdate = function (x, y) {
-        var r = config.rotation(x, y, targetElementWidth, targetElementHeight, config.maxRotation);
-
-        lastTranslate.x = x;
-        lastTranslate.y = y;
-
-        Card.transform(targetElement, x, y, r);
-    };
-
-    /**
-     * Alias
-     */
-    card.on = eventEmitter.on;
-
-    /**
-     * Throws a card into the stack from an arbitrary position.
-     *
-     * @param {Number} fromX
-     * @param {Number} fromY
-     */
-    card.throwIn = function (fromX, fromY) {
-        throwWhere(Card.THROW_IN, fromX, fromY);
-    };
-
-    /**
-     * Throws a card out of the stack in the direction away from the original offset.
-     *
-     * @param {Number} fromX
-     * @param {Number} fromY
-     */
-    card.throwOut = function (fromX, fromY) {
-        throwWhere(Card.THROW_OUT, fromX, fromY);
-    };
-
-    /**
-     * Unbinds all Hammer.Manager events.
-     * Removes the listeners from the physics simulation.
-     */
-    card.destroy = function () {
-        mc.destroy();
-        springSnapBack.destroy();
-        springThrowOut.destroy();
-    };
-
-    /**
-     * @param {Card.THROW_IN|Card.THROW_OUT} where
-     * @param {Number} fromX
-     * @param {Number} fromY
-     */
-    throwWhere = function (where, fromX, fromY) {
-        lastThrow.fromX = fromX;
-        lastThrow.fromY = fromY;
-        lastThrow.direction = lastThrow.fromX < 0 ? Card.DIRECTION_LEFT : Card.DIRECTION_RIGHT;
-
-        if (where == Card.THROW_IN) {
-            springSnapBack.setCurrentValue(0).setAtRest().setEndValue(1);
-
-            eventEmitter.trigger('throwin', {
-                target: targetElement,
-                throwDirection: lastThrow.direction
-            });
-        } else if (where == Card.THROW_OUT) {
-            springThrowOut.setCurrentValue(0).setAtRest().setVelocity(100).setEndValue(1);
-
-            eventEmitter.trigger('throwout', {
-                target: targetElement,
-                throwDirection: lastThrow.direction
-            });
-
-            if (lastThrow.direction == Card.DIRECTION_LEFT) {
-                eventEmitter.trigger('throwoutleft', {
-                    target: targetElement,
-                    throwDirection: lastThrow.direction
-                });
-            } else {
-                eventEmitter.trigger('throwoutright', {
-                    target: targetElement,
-                    throwDirection: lastThrow.direction
-                });
-            }
-        } else {
-            throw new Error('Invalid throw event.');
-        }
-    };
-
-    return card;
-};
-
-/**
- * Interprets stack.config() object. Sets default configuration.
- * 
- * @param {Object} config
- * @return {Object}
- */
-Card.config = function (config) {
-    config = config || {};
-
-    config.isThrowOut = config.isThrowOut ? config.isThrowOut : Card.isThrowOut;
-    
-    config.throwOutConfidence = config.throwOutConfidence ? config.throwOutConfidence : Card.throwOutConfidence;
-
-    config.throwOutDistance = config.throwOutDistance ? config.throwOutDistance : Card.throwOutDistance;
-    config.minThrowOutDistance = config.minThrowOutDistance ? config.minThrowOutDistance : 400;
-    config.maxThrowOutDistance = config.maxThrowOutDistance ? config.maxThrowOutDistance : 500;
-
-    config.rotation = config.rotation ? config.rotation : Card.rotation;
-    config.maxRotation = config.maxRotation ? config.maxRotation : 20;
-
-    config.transform = config.transform ? config.transform : Card.transform;
-
-    return config;
-};
-
-/**
- * Invoked in the event of `dragmove` and every time the physics solver is triggered.
- * Uses CSS transform to translate element position and rotation.
- * 
- * @param {Number} x Horizontal offset from the startDrag.
- * @param {Number} y Vertical offset from the startDrag.
- * @return {null}
- */
-Card.transform = function (element, x, y, r) {
-    element.style[vendorPrefix('transform')] = 'translate(' + x + 'px, ' + y + 'px) rotate(' + r + 'deg)';
-};
-
-/**
- * If element is not the last among the siblings, append the
- * element to the parentNode. The reason for using this as opposed to zIndex
- * is to allow CSS selector :nth-child, etc.
- *
- * Invoked in the event of mousedown.
- * Invoked when card is added to the stack.
- * 
- * @param {HTMLElement} element The target element.
- */
-Card.appendToParent = function (element) {
-    var parent = element.parentNode,
-        siblings = parent.querySelectorAll('li'),
-        targetIndex = [].slice.apply(siblings).indexOf(element);
-
-    if (targetIndex + 1 != siblings.length) {
-        parent.removeChild(element);
-        parent.appendChild(element);
-    }
-};
-
-/**
- * Invoked in the event of dragmove.
- * Returns a value between 0 and 1 indicating the completeness of the throw out condition.
- * Ration of the absolute distance from the original card position and element width.
- * 
- * @param {Number} offset Distance from the dragStart.
- * @param {Number} elementWidth Width of the element being dragged.
- * @return {Number}
- */
-Card.throwOutConfidence = function (offset, elementWidth) {
-    return Math.min(Math.abs(offset) / elementWidth, 1);
-};
-
-/**
- * Invoked in the event of dragend.
- * Determines if element is being thrown out of the stack.
- * Element is considered to be thrown out when throwOutConfidence is equal to 1.
- * 
- * @param {Number} offset Distance from the dragStart.
- * @param {Number} elementWidth Width of the element being dragged.
- * @return {Boolean}
- */
-Card.isThrowOut = function (offset, elementWidth) {
-    return Card.throwOutConfidence(offset, elementWidth) == 1;
-};
-
-/**
- * Invoked when card is added to the stack.
- * The card is thrown to this offset from the stack.
- * The value is a random number between minThrowOutDistance and maxThrowOutDistance.
- * 
- * @return {Number}
- */
-Card.throwOutDistance = function (minThrowOutDistance, maxThrowOutDistance) {
-    return util.randomInt(minThrowOutDistance, maxThrowOutDistance);
-};
-
-/**
- * Rotation is equal to the proportion of horizontal and vertical offset
- * times the maximumRotation constant.
- * 
- * @param {Number} x Horizontal offset from the startDrag.
- * @param {Number} y Vertical offset from the startDrag.
- * @param {Number} elementWidth
- * @param {Number} elementHeight
- * @param {Number} maxRotation
- * @return {Number} Rotation angle expressed in degrees.
- */
-Card.rotation = function (x, y, elementWidth, elementHeight, maxRotation) {
-    var horizontalOffset = Math.min(Math.max(x/elementWidth, -1), 1),
-        verticalOffset = (y > 0 ? 1 : -1) * Math.min(Math.abs(y)/100, 1),
-        rotation = horizontalOffset * verticalOffset * maxRotation;
-
-    return rotation;
-};
-
-Card.DIRECTION_LEFT = -1;
-Card.DIRECTION_RIGHT = 1;
-
-Card.THROW_IN = 'in';
-Card.THROW_OUT = 'out';
-
-module.exports = Card;
-},{"hammerjs":2,"rebound":3,"sister":4,"vendor-prefix":5}],7:[function(require,module,exports){
-var Stack,
-    Sister = require('sister'),
-    rebound = require('rebound'),
-    Card = require('./card.js');
-
-/**
- * @param {Object} config
- */
-Stack = function (config) {
-    var stack = {},
-        springSystem = new rebound.SpringSystem(),
-        eventEmitter = Sister();
-
-    /**
-     * Get the configuration object.
-     * 
-     * @return {Object}
-     */
-    stack.config = function () {
-        return config;
-    };
-
-    /**
-     * Get a singleton instance of the SpringSystem physics engine.
-     * 
-     * @return {Sister}
-     */
-    stack.springSystem = function () {
-        return springSystem;
-    };
-
-    /**
-     * Proxy to the instance of the event emitter.
-     * 
-     * @param {String} eventName
-     * @param {String} listener
-     */
-    stack.on = function (eventName, listener) {
-        eventEmitter.on(eventName, listener);
-    };
-
-    /**
-     * @return {Card}
-     */
-    stack.createCard = function (targetElement) {
-        var card = new Card(this, targetElement);
-
-        // Proxy Card events to the Stack.
-        card.on('throwout', eventEmitter.trigger.bind(null, 'throwout'));
-        card.on('throwoutleft', eventEmitter.trigger.bind(null, 'throwoutleft'));
-        card.on('throwoutright', eventEmitter.trigger.bind(null, 'throwoutright'));
-        card.on('throwin', eventEmitter.trigger.bind(null, 'throwin'));
-        card.on('dragstart', eventEmitter.trigger.bind(null, 'dragstart'));
-        card.on('dragmove', eventEmitter.trigger.bind(null, 'dragmove'));
-        card.on('dragend', eventEmitter.trigger.bind(null, 'dragend'));
-
-        return card;
-    };
-
-    return stack;
-};
-
-module.exports = Stack;
-},{"./card.js":6,"rebound":3,"sister":4}],8:[function(require,module,exports){
-(function (global){
-var Stack = require('./stack.js'),
-    Card = require('./card.js');
-
-global.gajus = global.gajus || {};
-
-global.gajus.Swing = {
-    Stack: Stack,
-    Card: Card
-};
-
-module.exports = {
-    Stack: Stack,
-    Card: Card
-};
-}).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./card.js":6,"./stack.js":7}],9:[function(require,module,exports){
+},{}],76:[function(require,module,exports){
 var Swing = require('swing');
 
-angular
-    .module('gajus.swing', [])
-    .directive('swingStack', function () {
+(function(angular, Swing, undefined) {
+
+    "use strict";
+
+    angular.module('gajus.swing', []);
+
+    angular.module('gajus.swing').directive('swingStack', /* @ngInject */ ["$parse", function ($parse) {
         return {
             restrict: 'A',
-            scope: {},
-            controller: function () {
-                var stack;
+            controller: /* @ngInject */ ["$scope", "$element", "$attrs", function ($scope, $element, $attrs) {
+                var stack,
+                    defaultOptions = {};
 
-                stack = Swing.Stack();
+                var options = $parse($attrs.swingOptions)($scope);
+
+                angular.extend(defaultOptions, options);
+
+                stack = Swing.Stack(defaultOptions);
 
                 this.add = function (cardElement) {
                     return stack.createCard(cardElement);
                 };
-            }
+            }]
         };
-    })
-    .directive('swingCard', function () {
+    }]);
+
+    angular.module('gajus.swing').directive('swingCard', function () {
         return {
             restrict: 'A',
             require: '^swingStack',
@@ -4089,6 +7063,7 @@ angular
                 swingOnDragend: '&'
             },
             link: function (scope, element, attrs, swingStack) {
+
                 var card = swingStack.add(element[0]),
                     events = ['throwout', 'throwoutleft', 'throwoutright', 'throwin', 'dragstart', 'dragmove', 'dragend'];
 
@@ -4097,10 +7072,15 @@ angular
                 // @see https://docs.angularjs.org/api/ng/service/$compile#comprehensive-directive-api
                 angular.forEach(events, function (eventName) {
                     card.on(eventName, function (eventObject) {
-                        scope['swingOn' + eventName.charAt(0).toUpperCase() + eventName.slice(1)]({eventName: eventName, eventObject: eventObject});
+                        scope['swingOn' + eventName.charAt(0).toUpperCase() + eventName.slice(1)]({
+                            eventName: eventName,
+                            eventObject: eventObject
+                        });
                     });
                 });
             }
         };
     });
-},{"swing":8}]},{},[9])
+
+})(angular, Swing);
+},{"swing":3}]},{},[76])

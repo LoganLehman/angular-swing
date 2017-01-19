@@ -3,6 +3,7 @@ var karma = require('karma').server,
     jshint = require('gulp-jshint'),
     header = require('gulp-header'),
     rename = require('gulp-rename'),
+    ngAnnotate = require('gulp-ng-annotate'),
     uglify = require('gulp-uglify'),
     browserify = require('gulp-browserify'),
     fs = require('fs'),
@@ -18,12 +19,17 @@ gulp.task('lint', function () {
 });
 
 gulp.task('clean', ['lint'], function (cb) {
-    del(['dist'], cb);
+    del(['dist']).then(function () {
+        cb();
+    });
 });
 
 gulp.task('bundle', ['clean'], function () {
     return gulp
         .src('./src/angular-swing.js')
+        .pipe(ngAnnotate({
+            add: true
+        }))
         .pipe(browserify({
             //debug : true
         }))

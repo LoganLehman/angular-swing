@@ -64,6 +64,24 @@ Attach event listeners to the instance of Card:
 </ul>
 ```
 
+Use scope variable to change Swing Stack default options: 
+```js
+$scope.options = {
+    throwOutConfidence: function (offset, element) {
+        console.log('throwOutConfidence', offset, element.offsetWidth);
+        return Math.min(Math.abs(offset) / element.offsetWidth, 1);
+    },
+    isThrowOut: function (offset, element, throwOutConfidence) {
+        console.log('isThrowOut', offset, element.offsetWidth, throwOutConfidence);
+        return throwOutConfidence === 1;
+    }
+};
+```
+
+```html
+<ul swing-stack swing-options="options">...</ul>
+```
+
 Use scope variables/methods to add/remove cards:
 
 ```html
