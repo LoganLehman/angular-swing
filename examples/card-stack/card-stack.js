@@ -1,6 +1,6 @@
 angular
     .module('card-stack-demo', ['gajus.swing'])
-    .controller('card-stack-playground', function ($scope) {
+    .controller('card-stack-playground', function ($scope, swingStacks) {
         $scope.cards = [
             {name: 'clubs', symbol: '♣'},
             {name: 'diamonds', symbol: '♦'},
@@ -35,6 +35,12 @@ angular
         $scope.dragend = function (eventName, eventObject) {
             console.log('dragend', eventObject);
         };
+
+        $scope.throwCard = function ($event, stackId){
+          var card = swingStacks.getTopCardFromStack(stackId);
+          card.throwOut(swingStacks.Card.DIRECTION_LEFT, 0);
+
+        }
 
         $scope.options = {
             throwOutConfidence: function (offset, elementWidth) {
